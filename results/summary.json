@@ -1,0 +1,17 @@
+{
+  "baseline_benchmark_f1": 0.002,
+  "baseline_benchmark_recall": 0.001,
+  "final_benchmark_f1": 0.8806,
+  "final_benchmark_recall": 0.872,
+  "final_benchmark_auc": 0.9789,
+  "final_fp_rate_on_legit": 0.0217,
+  "iterations": 8,
+  "runtime_seconds": 422.3,
+  "config": {
+    "iterations": 8,
+    "attacks_per_vector": 400,
+    "benchmark_per_vector": 500,
+    "heldout_frac": 0.4,
+    "seed": 7
+  }
+}
