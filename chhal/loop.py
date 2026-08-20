@@ -136,6 +136,11 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     # plausibility guardrail (on-manifold rate) and the mimicry claim (KS vs legit).
     legit_pop = legit_eval[FEATURE_COLUMNS]
     fid = fidelity_report(legit_pop, bench_attacks, bench_vec, base.feature_stats)
+    # non-tautological companion to on_manifold_rate (see fidelity.py docstring): how
+    # often the search proposed a move outside the manifold and the guardrail pulled it
+    # back, averaged over the fully-optimized benchmark batches.
+    fid["frac_off_manifold_pre_clip"] = round(float(np.mean(
+        [b.provenance["frac_off_manifold_pre_clip"] for b in bench_batches])), 4)
     per_vector_fid = fid.pop("per_vector")
     mimic_ks = fid.pop("mimicry_ks_table")
     mimic_attacks = bench_attacks[bench_vec == fid["mimicry_vector"]]

@@ -22,7 +22,8 @@ from .contract import FEATURE_COLUMNS, LABEL_COLUMN
 @dataclass
 class BaseData:
     train: pd.DataFrame          # legit + a little baseline (non-GenAI) fraud
-    test: pd.DataFrame           # frozen hold-out of legit traffic for FP measurement
+    test: pd.DataFrame           # frozen hold-out (legit + baseline fraud); filter to
+                                  # is_fraud==0 for legit-only FP measurement
     feature_stats: pd.DataFrame  # per-feature quantiles of the realistic manifold
 
 

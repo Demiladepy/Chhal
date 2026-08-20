@@ -1,10 +1,10 @@
 # Chhal — pinned for a reproducible closed-loop run.
-# numpy pinned <2 to match the pandas/lightgbm/shap wheels (ABI compatibility).
+# numpy pinned <2 to match the pandas/lightgbm wheels (ABI compatibility).
 numpy==1.26.4
 pandas==2.2.2
 scikit-learn==1.4.2
-lightgbm==4.3.0
-shap==0.44.1
+lightgbm==4.6.0
+scipy==1.13.1
 streamlit==1.37.1
 plotly==5.23.0
 matplotlib==3.8.4

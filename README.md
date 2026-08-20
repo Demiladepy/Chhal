@@ -15,7 +15,7 @@ defense."* So Chhal is **one closed loop**, and the loop itself is the demo.
         ┌─────────────────────────────────────────────────────────┐
         │                                                         │
    [1] RED-TEAM AGENT ──► [2] CONSTRAINED EVASION ──► [3] DETECTOR
-   (4 GenAI attack           OPTIMIZER                  (LightGBM + SHAP,
+   (4 GenAI attack           OPTIMIZER                  (LightGBM,
     vectors, tabular)     (evade + stay plausible)      flags fraud)
         ▲                                                         │
         │                                                         ▼
@@ -44,23 +44,27 @@ separate:
 benchmark and pressure attacks touch neither.
 
 A representative run (8 iterations): benchmark recall **~0% → ~87%** while **FP on legit
-stays under 1%**; the hero vector `threshold_hugging` stays hardest to catch (~0.70) because
+rises to ~2.2%**; the hero vector `threshold_hugging` stays hardest to catch (~0.67) because
 it mimics normal behaviour. Numbers vary by seed — reproduce with `scripts/run_loop.py`.
 
 ---
 
 ## Quickstart
 
+macOS prerequisite: LightGBM's wheel dynamically links Homebrew's OpenMP at import
+time (`brew install libomp`) — without it `import lightgbm` fails even though pip
+installed cleanly.
+
 ```bash
 python -m venv .venv
-.venv/Scripts/activate          # Windows  (source .venv/bin/activate on macOS/Linux)
+.venv\Scripts\activate           # Windows  (source .venv/bin/activate on macOS/Linux)
 pip install -r requirements.txt
 
 python scripts/run_loop.py --fast     # ~1 min smoke run (4 iterations)
 python scripts/run_loop.py            # full 8-iteration run -> results/
 
 streamlit run dashboard/app.py        # the 3-panel live demo (replays results/)
-python -m pytest tests/ -q            # contract + optimizer + loop smoke tests
+python -m pytest tests/ -q            # contract + optimizer + loop + fidelity smoke tests
 ```
 
 The dashboard **replays precomputed results** — it never trains live, so it can't stall
@@ -120,9 +124,12 @@ attacker control (issuer-side signals like `merchant_risk` are off-limits). See
 
 A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py)):
 
-- **On-manifold rate ~100%** — even after full evasion optimisation, attack feature values
-  stay inside the realistic manifold bounds. Direct proof the plausibility guardrail holds:
-  attacks evade the detector *without* becoming physically impossible.
+- **On-manifold rate ~100%** — by construction: the optimizer hard-clips every candidate to
+  these exact bounds before scoring, so this only proves the clip is wired correctly.
+- **Guardrail binding rate ~29%** — the non-tautological number: the fraction of proposed
+  perturbations that actually landed *outside* the manifold before clipping and had to be
+  pulled back. This is the real evidence the guardrail does work — attacks push against
+  the plausibility envelope, they don't just float freely inside it.
 - **Per-vector KS distance from legit traffic** — the hero `threshold_hugging` sits **closest
   to legit** (KS ~0.27), which is exactly why it's the hardest to catch; overt vectors
   (`bustout`, `card_testing`) sit further out **by design** — that separation is the fraud
@@ -137,7 +144,7 @@ generated; swap in real PaySim / IEEE-CIS and every number becomes a real-data r
 chhal/
   contract.py      # AttackBatch, ScoreReport, FEATURE_COLUMNS — the frozen interface
   data.py          # base distribution (swap in PaySim / IEEE-CIS here); frozen train/test
-  detector.py      # LightGBM + SHAP blue-team detector
+  detector.py      # LightGBM blue-team detector (gain-based feature importance)
   redteam/         # the four live-loop attack vectors
   optimizer.py     # constrained evasion optimizer (the novel core)
   evaluation.py    # held-out split protocol + metrics
@@ -145,7 +152,7 @@ chhal/
   loop.py          # orchestration -> the arms-race curve
 scripts/run_loop.py    # run the loop, write results/
 dashboard/app.py       # 3-panel Streamlit demo (replays results/)
-tests/                 # contract + optimizer + loop smoke tests
+tests/                 # contract + optimizer + loop + fidelity smoke tests
 ```
 
 ## Data

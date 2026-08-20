@@ -71,5 +71,5 @@ def evaluate(
         auc=float(roc_auc_score(y, proba)) if len(np.unique(y)) > 1 else 0.5,
         fp_rate_on_legit=fp_rate,
         per_vector_recall=per_vector,
-        shap_top_features=detector.top_shap_features(X),
+        top_features=detector.top_gain_features(),
     )

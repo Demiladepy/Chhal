@@ -8,10 +8,11 @@
   "fidelity": {
     "on_manifold_rate": 1.0,
     "mimicry_vector": "threshold_hugging",
-    "mimicry_mean_ks_vs_legit": 0.2724
+    "mimicry_mean_ks_vs_legit": 0.2724,
+    "frac_off_manifold_pre_clip": 0.2937
   },
   "iterations": 8,
-  "runtime_seconds": 379.5,
+  "runtime_seconds": 94.2,
   "config": {
     "iterations": 8,
     "attacks_per_vector": 400,

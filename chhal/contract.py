@@ -91,7 +91,7 @@ class ScoreReport:
     auc: float
     fp_rate_on_legit: float
     per_vector_recall: Dict[str, float] = field(default_factory=dict)
-    shap_top_features: List[str] = field(default_factory=list)
+    top_features: List[str] = field(default_factory=list)  # LightGBM gain ranking, not SHAP
 
     def as_row(self) -> Dict:
         return {

@@ -4,10 +4,17 @@
 realistic loses to one that *measures* it. We measure two things that matter, and frame
 them honestly:
 
-  1. **Plausibility / on-manifold rate** — the fraction of attack feature values that fall
-     inside the realistic manifold bounds [q0.5%, q99.5%] of the base data. This is direct,
-     measurable evidence that the evasion optimizer's guardrail works: it evades the
-     detector *without* leaving the executable envelope. Target: ~100%.
+  1. **Plausibility / on-manifold rate** — the fraction of (already-clipped) attack feature
+     values that fall inside the realistic manifold bounds [q0.5%, q99.5%] of the base data.
+     Because the optimizer hard-clips every candidate to these EXACT bounds
+     (`EvasionOptimizer._clip_to_manifold`), this is ~1.0 by construction — it proves the
+     clip is wired correctly, not that the guardrail did meaningful work. Target: ~100%.
+
+  1b. **Guardrail binding rate** (`frac_off_manifold_pre_clip`, tracked in optimizer.py and
+     surfaced in loop.py) — the fraction of proposed perturbations that landed OUTSIDE the
+     manifold *before* clipping and had to be pulled back. This is the non-tautological
+     evidence the guardrail actually does work: it measures how often the search pushed
+     against the plausibility envelope, not whether the output technically satisfies it.
 
   2. **Per-vector distribution distance from legitimate traffic** (two-sample KS vs legit).
      Fraud is *supposed* to differ from normal — that difference is the fraud signal, not a
@@ -52,8 +59,10 @@ def ks_table(reference: pd.DataFrame, sample: pd.DataFrame,
 def on_manifold_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame) -> float:
     """Fraction of (row, feature) cells inside the realistic manifold bounds.
 
-    ~1.0 is the evidence that the optimizer's plausibility guardrail held — attacks
-    evaded the detector while staying executable.
+    Note: when `sample` is the optimizer's OUTPUT, this is ~1.0 BY CONSTRUCTION — the
+    optimizer hard-clips every candidate to exactly these bounds, so this only confirms
+    the clip is wired correctly, not that the guardrail did meaningful work. For that,
+    see `frac_off_manifold_pre_clip` in each AttackBatch.provenance (optimizer.py).
     """
     lo, hi = feature_stats.loc[0.005], feature_stats.loc[0.995]
     inside = np.ones((len(sample), len(FEATURE_COLUMNS)), dtype=bool)

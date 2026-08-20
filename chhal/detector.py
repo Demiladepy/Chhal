@@ -1,4 +1,4 @@
-"""The blue-team detector: LightGBM over the frozen feature space, with SHAP.
+"""The blue-team detector: LightGBM over the frozen feature space.
 
 LightGBM is pragmatic SOTA for tabular fraud — fast, strong, interpretable, and
 deployable, which is exactly what "real-world feasibility" rewards. Swap for XGBoost
@@ -42,11 +42,12 @@ class Detector:
             X = X[FEATURE_COLUMNS].to_numpy()
         return self.model.predict_proba(X)[:, 1]
 
-    def top_shap_features(self, df: pd.DataFrame, n: int = 5) -> List[str]:
-        """Cheap global attribution via gain importance (SHAP-compatible ranking).
+    def top_gain_features(self, n: int = 5) -> List[str]:
+        """Global feature ranking by LightGBM gain importance.
 
-        We use LightGBM gain here to keep the loop fast; the dashboard computes true
-        per-transaction SHAP on demand for the "why flagged" panel.
+        This is a WHOLE-MODEL ranking, not a per-transaction attribution — it is the
+        same for every call until the model is next retrained. It does not vary by
+        batch/row, so there is no `df` argument to pass in.
         """
         imp = self.model.booster_.feature_importance(importance_type="gain")
         order = np.argsort(imp)[::-1][:n]

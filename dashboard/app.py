@@ -130,12 +130,18 @@ st.markdown("---")
 st.subheader("🎯 Fidelity of simulation — measured, not claimed")
 fid = summary.get("fidelity", {})
 if fid:
-    f1, f2 = st.columns(2)
+    f1, f2, f3 = st.columns(3)
     f1.metric("On-manifold rate", f"{fid['on_manifold_rate']:.1%}",
               help="Share of fully-optimised attack feature values still inside the realistic "
-                   "manifold bounds. This is the plausibility guardrail's proof — attacks evade "
-                   "the detector without becoming physically impossible.")
-    f2.metric(f"Mimicry KS vs legit ({fid.get('mimicry_vector','')})",
+                   "manifold bounds. Every candidate is hard-clipped to these exact bounds, so "
+                   "this is ~100% by construction — it proves the clip is wired correctly, not "
+                   "that the guardrail did meaningful work. See 'guardrail binding rate' for that.")
+    if "frac_off_manifold_pre_clip" in fid:
+        f2.metric("Guardrail binding rate", f"{fid['frac_off_manifold_pre_clip']:.1%}",
+                  help="Share of proposed perturbations that landed outside the manifold "
+                       "BEFORE clipping and had to be pulled back. This is the non-tautological "
+                       "evidence the guardrail actually does work.")
+    f3.metric(f"Mimicry KS vs legit ({fid.get('mimicry_vector','')})",
               f"{fid['mimicry_mean_ks_vs_legit']:.3f}",
               help="Distribution distance of the hero vector from legitimate traffic. Low = it "
                    "genuinely mimics normal behaviour, which is why it's the hardest to catch.")

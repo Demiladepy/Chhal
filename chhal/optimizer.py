@@ -17,6 +17,7 @@ Constraints on every candidate:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -63,12 +64,30 @@ class EvasionOptimizer:
             df[c] = df[c].round()
         return df
 
+    def _off_manifold_frac(self, df: pd.DataFrame) -> float:
+        """Fraction of (row, attacker-feature) cells outside the manifold bounds
+        BEFORE clipping. Non-tautological companion to fidelity.on_manifold_rate:
+        that metric is measured on the optimizer's OWN clipped output against the
+        SAME bounds, so it is ~1.0 by construction and only proves the clip is wired
+        correctly. This measures how often the search actually wanted to leave the
+        manifold — i.e. whether the guardrail is doing real work, not just present.
+        """
+        total = len(df) * len(ATTACKER_CONTROLLED)
+        if total == 0:
+            return 0.0
+        violations = sum(
+            int(((df[col] < self.lo[col]) | (df[col] > self.hi[col])).sum())
+            for col in ATTACKER_CONTROLLED
+        )
+        return violations / total
+
     def _perturb(self, df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
         out = df.copy()
         for col in ATTACKER_CONTROLLED:
             rng_span = max(self.hi[col] - self.lo[col], 1e-6)
             noise = rng.normal(0, self.cfg.step_scale * rng_span, len(df))
             out[col] = out[col] + noise
+        self._clip_hits.append(self._off_manifold_frac(out))
         return self._clip_to_manifold(out)
 
     # -- main ----------------------------------------------------------------
@@ -76,6 +95,7 @@ class EvasionOptimizer:
         self, batch: AttackBatch, detector: Detector, rng: np.random.Generator
     ) -> AttackBatch:
         """Return an adapted AttackBatch that evades `detector` while staying plausible."""
+        self._clip_hits: List[float] = []   # reset per call; filled by _perturb
         best = self._clip_to_manifold(batch.transactions.copy())
         best_score = detector.score(best)                     # per-row fraud proba
 
@@ -98,6 +118,11 @@ class EvasionOptimizer:
                 "optimized": True,
                 "mean_evasion_score": float(best_score.mean()),
                 "generations": self.cfg.generations,
+                # non-tautological guardrail evidence (see fidelity.py docstring):
+                # how often a proposed move landed outside the manifold pre-clip
+                "frac_off_manifold_pre_clip": (
+                    float(np.mean(self._clip_hits)) if self._clip_hits else 0.0
+                ),
             },
         ).validate()
         return adapted

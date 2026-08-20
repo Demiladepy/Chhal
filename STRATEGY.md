@@ -26,7 +26,7 @@ iteration, and we make the *loop itself* the demo:
         ┌─────────────────────────────────────────────────────────┐
         │                                                         │
    [1] RED-TEAM AGENT ──► [2] HIGH-FIDELITY SIMULATOR ──► [3] DETECTOR
-   (LLM invents/adapts        (renders realistic              (XGBoost + SHAP,
+   (LLM invents/adapts        (renders realistic              (LightGBM,
     attack vectors)            transactions + artifacts)       flags fraud)
         ▲                                                         │
         │                                                         ▼
@@ -56,7 +56,8 @@ AttackBatch {
   vector_id:      str           # e.g. "threshold_hugging", "bustout", "card_testing"
   iteration:      int           # which loop pass produced it
   transactions:   DataFrame     # SAME columns as the base dataset — no extra fields
-  labels:         Series[int]   # 1 = fraud (all rows in an AttackBatch are fraud)
+                                 # (all rows in an AttackBatch are fraud; label=1 is
+                                 # attached implicitly by the caller, not stored here)
   provenance:     dict          # seed, optimizer params, storyline text (for the write-up/UI)
 }
 ```
@@ -70,7 +71,7 @@ ScoreReport {
   precision, recall, f1, auc:  float
   fp_rate_on_legit:            float
   per_vector_recall:           dict[str, float]   # which attacks still slip through
-  shap_top_features:           list               # for the "why flagged" panel
+  top_features:                list               # gain-ranked features (not SHAP)
 }
 ```
 
@@ -90,7 +91,7 @@ write-up (scores "diversity of attacks"); we implement the starred ones.
 
 **Two tracks — and be explicit about which is which (this was blurred in v1):**
 
-- **★ LIVE-LOOP vectors** emit transaction features and flow through the XGBoost detector.
+- **★ LIVE-LOOP vectors** emit transaction features and flow through the LightGBM detector.
   These *are* the closed loop and the live demo.
 - **◆ SHOWCASE vectors** are text/agent/media attacks (voice clone, prompt injection). They
   do **not** emit tabular features, so they cannot feed the tabular detector. We demo them
@@ -146,7 +147,7 @@ Kaggle-credit-card solution. Cheap to do, high-signal to these judges.
 
 The optimizer nudges an attack's features to evade the **current** detector. This is what
 makes it a *loop*, not static generation. But the naive version is a trap: optimize features
-straight at XGBoost's decision boundary and you get "attacks" that fool the model but that
+straight at LightGBM's decision boundary and you get "attacks" that fool the model but that
 **no real fraudster could execute** — impossible timing, contradictory fields, off-manifold
 values. That would tank the "real-world feasibility" score and a sharp judge would catch it.
 
@@ -154,7 +155,7 @@ So the optimizer is a **constrained** search:
 
 - **Objective:** minimize detector fraud-score (maximize evasion).
 - **Method:** gradient-free (random / evolutionary / simple hill-climb) perturbation of a
-  *bounded* set of attacker-controllable features. No gradients through XGBoost needed —
+  *bounded* set of attacker-controllable features. No gradients through LightGBM needed —
   keeps it simple and honest.
 - **Hard constraints (the guardrail):** every candidate must (a) obey business rules
   (velocity caps, amount ranges, valid merchant categories), (b) stay inside the realistic
@@ -172,8 +173,9 @@ So the optimizer is a **constrained** search:
 
 ## Pillar 3 — DEFEND  (accuracy up, false positives down)
 
-- **Detector:** **XGBoost / LightGBM** — pragmatic SOTA for tabular fraud: fast, strong,
-  interpretable, deployable (ticks "feasibility"). **SHAP** for "why this was flagged."
+- **Detector:** **LightGBM** — pragmatic SOTA for tabular fraud: fast, strong,
+  interpretable, deployable (ticks "feasibility"). **LightGBM gain-based feature
+  importance** for "why this was flagged."
 - **Report:** precision, recall, **F1, AUC**, and **FP rate on legitimate payments** —
   and crucially the **delta after each loop iteration**, on the held-out splits below.
 - *Stretch (only if time):* a small **graph** layer (accounts/devices/beneficiaries) for
@@ -220,7 +222,7 @@ it doesn't compute them live.
 |---|---|
 | Diversity of attacks | ~15-vector GenAI taxonomy, live-loop vs showcase clearly split, India rails included |
 | Fidelity of simulation | PaySim/IEEE-CIS base + distribution-match evidence (KS-test) + plausibility-constrained attacks |
-| Detection efficacy | XGBoost + SHAP; F1/AUC/FP reported per iteration on **held-out novel attacks** |
+| Detection efficacy | LightGBM + gain-based feature importance; F1/AUC/FP reported per iteration on **held-out novel attacks** |
 | Novelty | the **closed adaptive loop** + constrained evasion optimizer + agentic red team + UPI grounding |
 | Real-world feasibility | deployable detector, attacks constrained to executable manifold, live UPI/RTP framing, streaming demo |
 | Defensibility (implicit) | held-out protocol + no-leakage statement + honest oscillating curve — survives judge scrutiny |
@@ -231,7 +233,7 @@ it doesn't compute them live.
 
 - **Circular curve** — red team optimizes against the detector, blue trains and scores on the
   same attacks. Fix: the `heldout_novel` split above. This is the #1 credibility risk.
-- **Off-manifold "attacks"** — features that fool XGBoost but are physically impossible.
+- **Off-manifold "attacks"** — features that fool LightGBM but are physically impossible.
   Fix: the plausibility guardrail on the optimizer.
 - **Fake unification** — pretending prompt-injection/voice-clone flow through the tabular
   loop. Fix: the live-loop vs showcase split; say plainly what closes the loop and what doesn't.
@@ -257,12 +259,12 @@ it doesn't compute them live.
 ## Realistic 2-week plan
 
 - **Days 1–2:** lock the `AttackBatch`/`ScoreReport` contract + data schema + the train/test/
-  heldout split policy; stand up the base dataset; XGBoost baseline on unmodified data
+  heldout split policy; stand up the base dataset; LightGBM baseline on unmodified data
   (get a real F1/AUC number).
 - **Days 3–6:** red-team agent + the hero vector (threshold-hugging) + 2 more injected; first
   end-to-end loop pass with the held-out split wired in; Streamlit skeleton.
 - **Days 7–9:** the constrained evasion optimizer + retraining loop; the held-out arms-race
-  curve; SHAP; UPI vector.
+  curve; gain-based "why flagged" features; UPI vector.
 - **Days 10–12:** fidelity plots, deck, polish the UI (replay mode), write the taxonomy doc,
   README + reproducibility, **submit before 31 Aug** (draft/un-submitted work is not judged).
 
