@@ -1,15 +1,15 @@
-# Chakravyuh — a closed-loop adversarial engine for GenAI payment fraud
+# Chhal — a closed-loop adversarial engine for GenAI payment fraud
 
 **Mastercard Innovation Challenge @ GFF 2026 · AI Defense Lab for Payment Security**
 
-> *Chakravyuh* — the spiral battle formation you enter and must fight your way out of.
-> Every attack the red team invents becomes the training ground for a stronger defence,
-> and every gap the defence reveals feeds the next attack.
+> *Chhal* (छल) — *deception*. Every deception the attacker invents becomes the training
+> ground for a defence that learns to see through it, and every gap the defence reveals
+> feeds the next deception.
 
 Most submissions are three disconnected things: a slide of attack ideas, a data
 generator, and a fraud classifier. The brief says what actually wins — *"the best
 solutions turn their own simulated attacks into the training ground for a stronger
-defense."* So Chakravyuh is **one closed loop**, and the loop itself is the demo.
+defense."* So Chhal is **one closed loop**, and the loop itself is the demo.
 
 ```
         ┌─────────────────────────────────────────────────────────┐
@@ -71,7 +71,7 @@ on stage.
 ## The loop interface contract (the day-1 lock)
 
 Two frozen structs let the red and blue sides build in parallel — see
-[`chakravyuh/contract.py`](chakravyuh/contract.py):
+[`chhal/contract.py`](chhal/contract.py):
 
 - **`AttackBatch`** — what the red team emits: fraud rows in exactly `FEATURE_COLUMNS`.
 - **`ScoreReport`** — what the detector returns: precision / recall / F1 / AUC, FP rate on
@@ -112,20 +112,36 @@ model yet that no real fraudster could execute — which would destroy the feasi
 score. Every candidate must obey **(a)** business rules (velocity caps, valid amounts),
 **(b)** the realistic manifold (feature quantile bounds from real data), and **(c)**
 attacker control (issuer-side signals like `merchant_risk` are off-limits). See
-[`chakravyuh/optimizer.py`](chakravyuh/optimizer.py).
+[`chhal/optimizer.py`](chhal/optimizer.py).
 
 ---
+
+## Fidelity of simulation — measured, not claimed
+
+A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py)):
+
+- **On-manifold rate ~100%** — even after full evasion optimisation, attack feature values
+  stay inside the realistic manifold bounds. Direct proof the plausibility guardrail holds:
+  attacks evade the detector *without* becoming physically impossible.
+- **Per-vector KS distance from legit traffic** — the hero `threshold_hugging` sits **closest
+  to legit** (KS ~0.27), which is exactly why it's the hardest to catch; overt vectors
+  (`bustout`, `card_testing`) sit further out **by design** — that separation is the fraud
+  signal, not a defect. The ranking lines up with detection recall: stealthier ⇒ harder.
+
+`results/fidelity.png` overlays the mimicry vector on legitimate traffic. Base data is
+generated; swap in real PaySim / IEEE-CIS and every number becomes a real-data report.
 
 ## Repository layout
 
 ```
-chakravyuh/
+chhal/
   contract.py      # AttackBatch, ScoreReport, FEATURE_COLUMNS — the frozen interface
   data.py          # base distribution (swap in PaySim / IEEE-CIS here); frozen train/test
   detector.py      # LightGBM + SHAP blue-team detector
   redteam/         # the four live-loop attack vectors
   optimizer.py     # constrained evasion optimizer (the novel core)
   evaluation.py    # held-out split protocol + metrics
+  fidelity.py      # KS-tests + on-manifold rate — fidelity as a metric, not a claim
   loop.py          # orchestration -> the arms-race curve
 scripts/run_loop.py    # run the loop, write results/
 dashboard/app.py       # 3-panel Streamlit demo (replays results/)
@@ -135,7 +151,7 @@ tests/                 # contract + optimizer + loop smoke tests
 ## Data
 
 The base distribution is generated programmatically so the repo runs with one command and
-is fully reproducible. [`chakravyuh/data.py`](chakravyuh/data.py) is a single swappable
+is fully reproducible. [`chhal/data.py`](chhal/data.py) is a single swappable
 function — point `load_base_data` at real **PaySim** or **IEEE-CIS** features and nothing
 downstream changes, because everything downstream only knows `FEATURE_COLUMNS`.
 

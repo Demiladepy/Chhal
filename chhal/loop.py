@@ -30,10 +30,11 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-from .contract import LABEL_COLUMN, AttackBatch
+from .contract import FEATURE_COLUMNS, LABEL_COLUMN, AttackBatch
 from .data import BaseData, load_base_data
 from .detector import Detector
 from .evaluation import evaluate, split_attacks
+from .fidelity import fidelity_report
 from .optimizer import EvasionOptimizer
 from .redteam import ALL_VECTORS
 
@@ -53,6 +54,11 @@ class LoopResult:
     per_vector_recall: pd.DataFrame     # BENCHMARK recall per vector over iterations
     baseline: Dict
     sample_attacks: pd.DataFrame        # a few adapted rows for the UI stream
+    fidelity: Dict = field(default_factory=dict)         # headline fidelity numbers
+    fidelity_per_vector: pd.DataFrame = field(default_factory=pd.DataFrame)  # KS vs legit
+    fidelity_ks_table: pd.DataFrame = field(default_factory=pd.DataFrame)    # mimic feature KS
+    fidelity_legit: pd.DataFrame = field(default_factory=pd.DataFrame)       # legit sample (plot)
+    fidelity_mimic: pd.DataFrame = field(default_factory=pd.DataFrame)       # mimic attacks (plot)
     config: Dict = field(default_factory=dict)
 
 
@@ -125,10 +131,25 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
         ignore_index=True,
     )
 
+    # -- fidelity: measured on the (hard, fully-optimized) benchmark attacks --------------
+    # These are the most heavily optimized, so they are the strongest test of both the
+    # plausibility guardrail (on-manifold rate) and the mimicry claim (KS vs legit).
+    legit_pop = legit_eval[FEATURE_COLUMNS]
+    fid = fidelity_report(legit_pop, bench_attacks, bench_vec, base.feature_stats)
+    per_vector_fid = fid.pop("per_vector")
+    mimic_ks = fid.pop("mimicry_ks_table")
+    mimic_attacks = bench_attacks[bench_vec == fid["mimicry_vector"]]
+
     return LoopResult(
         curve=pd.DataFrame(curve_rows),
         per_vector_recall=pd.DataFrame(per_vec_rows),
         baseline=baseline_report.as_row(),
         sample_attacks=sample,
+        fidelity=fid,
+        fidelity_per_vector=per_vector_fid,
+        fidelity_ks_table=mimic_ks,
+        fidelity_legit=legit_pop.sample(
+            min(6000, len(legit_pop)), random_state=cfg.seed).reset_index(drop=True),
+        fidelity_mimic=mimic_attacks.reset_index(drop=True),
         config=asdict(cfg),
     )

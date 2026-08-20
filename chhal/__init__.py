@@ -1,4 +1,4 @@
-"""Chakravyuh — a closed-loop adversarial engine for GenAI payment fraud."""
+"""Chhal — a closed-loop adversarial engine for GenAI payment fraud."""
 from .contract import (
     ATTACKER_CONTROLLED,
     CHANNELS,

@@ -13,12 +13,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from chakravyuh.contract import FEATURE_COLUMNS, AttackBatch
-from chakravyuh.data import load_base_data
-from chakravyuh.detector import Detector
-from chakravyuh.loop import LoopConfig, run_loop
-from chakravyuh.optimizer import EvasionOptimizer
-from chakravyuh.redteam import ALL_VECTORS
+from chhal.contract import FEATURE_COLUMNS, AttackBatch
+from chhal.data import load_base_data
+from chhal.detector import Detector
+from chhal.loop import LoopConfig, run_loop
+from chhal.optimizer import EvasionOptimizer
+from chhal.redteam import ALL_VECTORS
 
 
 def test_attackbatch_rejects_wrong_feature_space():
@@ -66,6 +66,32 @@ def test_loop_runs_and_produces_a_curve():
     # generalisation to attacks the detector never trained on.
     bench = result.curve[result.curve["phase"] == "benchmark"].sort_values("iteration")
     assert bench["recall"].iloc[-1] > bench["recall"].iloc[0] + 0.3
+
+    # fidelity is populated and the guardrail keeps attacks on the manifold
+    assert result.fidelity["on_manifold_rate"] > 0.98
+    assert 0.0 <= result.fidelity["mimicry_mean_ks_vs_legit"] <= 1.0
+    assert set(result.fidelity_per_vector.columns) == {
+        "vector", "mean_ks_vs_legit", "features_like_legit"}
+    # the mimicry vector must be the closest to legit of all vectors
+    pv = result.fidelity_per_vector.sort_values("mean_ks_vs_legit")
+    assert pv.iloc[0]["vector"] == "threshold_hugging"
+
+
+def test_fidelity_flags_off_manifold_attacks():
+    """Pushing an in-distribution sample off the manifold must lower the on-manifold rate."""
+    from chhal.contract import FEATURE_COLUMNS
+    from chhal.data import load_base_data
+    from chhal.fidelity import on_manifold_rate
+
+    base = load_base_data(n_legit=4000, n_baseline_fraud=100, seed=2)
+    # legit rows are in-distribution by construction -> rate should be near 1.0
+    legit = base.test[base.test["is_fraud"] == 0][FEATURE_COLUMNS].copy()
+    good = on_manifold_rate(legit, base.feature_stats)
+    assert good > 0.95
+
+    legit["amount"] = legit["amount"] * 1000  # blatantly above the manifold ceiling
+    bad = on_manifold_rate(legit, base.feature_stats)
+    assert bad < good
 
 
 if __name__ == "__main__":

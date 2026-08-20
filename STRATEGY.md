@@ -1,11 +1,11 @@
-# Chakravyuh — a closed-loop adversarial engine for GenAI payment fraud
+# Chhal — a closed-loop adversarial engine for GenAI payment fraud
 
 **Mastercard Innovation Challenge @ GFF 2026 · AI Defense Lab for Payment Security**
 **Team:** Demilade + Akshat (2) · **Submission deadline:** 31 Aug 2026
 
-> *Chakravyuh* — the spiral battle formation you enter and must fight your way out of.
-> Our system is a self-enclosing loop: every attack it invents becomes the training
-> ground for a stronger defense, and every gap the defense reveals feeds the next attack.
+> *Chhal* (छल) — *deception*. Our system is a self-enclosing loop: every deception it
+> invents becomes the training ground for a defense that learns to see through it, and
+> every gap the defense reveals feeds the next deception.
 
 *v2 — strategy refined: loop contract specified, evaluation protocol made defensible,
 evasion optimizer constrained to plausibility, tabular vs. agentic tracks separated.*

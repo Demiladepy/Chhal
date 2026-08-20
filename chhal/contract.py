@@ -1,6 +1,6 @@
 """The loop interface contract — the single frozen artifact both sides build against.
 
-Everything else in Chakravyuh can change. These two structs and FEATURE_COLUMNS may
+Everything else in Chhal can change. These two structs and FEATURE_COLUMNS may
 not, without a deliberate, agreed schema bump. This is what lets the red side and the
 blue side develop in parallel without integration hell.
 

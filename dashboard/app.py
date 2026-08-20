@@ -1,4 +1,4 @@
-"""Chakravyuh — the 3-panel live demo (Streamlit).
+"""Chhal — the 3-panel live demo (Streamlit).
 
 Red Team | Live Stream | Blue Team. The dashboard REPLAYS precomputed loop results
 (results/*.csv) — it never trains live, so it cannot stall on stage. Run the loop
@@ -18,7 +18,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
-st.set_page_config(page_title="Chakravyuh — adversarial fraud loop", layout="wide")
+st.set_page_config(page_title="Chhal — adversarial fraud loop", layout="wide")
 
 
 @st.cache_data
@@ -27,16 +27,18 @@ def load():
     pv = pd.read_csv(RESULTS / "per_vector_recall.csv")
     sample = pd.read_csv(RESULTS / "sample_attacks.csv")
     summary = json.loads((RESULTS / "summary.json").read_text())
-    return curve, pv, sample, summary
+    fid_path = RESULTS / "fidelity_per_vector.csv"
+    fidelity = pd.read_csv(fid_path) if fid_path.exists() else pd.DataFrame()
+    return curve, pv, sample, summary, fidelity
 
 
 if not (RESULTS / "curve.csv").exists():
     st.error("No results yet. Run:  python scripts/run_loop.py")
     st.stop()
 
-curve, per_vector, sample, summary = load()
+curve, per_vector, sample, summary, fidelity = load()
 
-st.title("Chakravyuh — a closed-loop adversarial engine for GenAI payment fraud")
+st.title("Chhal — a closed-loop adversarial engine for GenAI payment fraud")
 st.caption(
     "Every attack the red team invents becomes training ground for a stronger defence. "
     "The chart tracks detection on **held-out novel attacks the detector never trained on** "
@@ -122,3 +124,35 @@ with st.expander("Why this curve is defensible (the judge's question)"):
         "- **The gap between the two lines is the point** — blue holds the known shape, "
         "red keeps probing new ones. An arms race, not a solved problem."
     )
+
+# ---- Fidelity: a metric, not a claim (judged criterion) --------------------
+st.markdown("---")
+st.subheader("🎯 Fidelity of simulation — measured, not claimed")
+fid = summary.get("fidelity", {})
+if fid:
+    f1, f2 = st.columns(2)
+    f1.metric("On-manifold rate", f"{fid['on_manifold_rate']:.1%}",
+              help="Share of fully-optimised attack feature values still inside the realistic "
+                   "manifold bounds. This is the plausibility guardrail's proof — attacks evade "
+                   "the detector without becoming physically impossible.")
+    f2.metric(f"Mimicry KS vs legit ({fid.get('mimicry_vector','')})",
+              f"{fid['mimicry_mean_ks_vs_legit']:.3f}",
+              help="Distribution distance of the hero vector from legitimate traffic. Low = it "
+                   "genuinely mimics normal behaviour, which is why it's the hardest to catch.")
+
+fcol1, fcol2 = st.columns([1.3, 1])
+with fcol1:
+    img = RESULTS / "fidelity.png"
+    if img.exists():
+        st.image(str(img), caption="Legit traffic (blue) vs the mimicry vector (red) — "
+                                    "overlapping mass = the attack hides inside normal behaviour.")
+with fcol2:
+    if not fidelity.empty:
+        st.caption("KS distance from legit, per vector (lower = more legit-like). "
+                   "`threshold_hugging` sits closest to normal — the stealth that makes it the "
+                   "hero vector; overt vectors sit further out **by design** (that's the fraud "
+                   "signal, not a defect).")
+        st.dataframe(fidelity.round(3), height=240, use_container_width=True)
+
+st.caption("Base data is generated (see `chhal/data.py`); point it at real PaySim / "
+           "IEEE-CIS features and every fidelity number becomes a real-data report.")

@@ -5,8 +5,13 @@
   "final_benchmark_recall": 0.872,
   "final_benchmark_auc": 0.9789,
   "final_fp_rate_on_legit": 0.0217,
+  "fidelity": {
+    "on_manifold_rate": 1.0,
+    "mimicry_vector": "threshold_hugging",
+    "mimicry_mean_ks_vs_legit": 0.2724
+  },
   "iterations": 8,
-  "runtime_seconds": 422.3,
+  "runtime_seconds": 379.5,
   "config": {
     "iterations": 8,
     "attacks_per_vector": 400,
