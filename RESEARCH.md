@@ -451,3 +451,158 @@ Beyond the papers already in your background list:
 ## 5. Bottom Line for the Team
 
 Claim this: **"a live, multi-vector, closed-loop adversarial system for tabular payment fraud, where an LLM-driven attacker and a LightGBM detector both adapt repeatedly during actual competition runtime."** That specific combination is not published anywhere found across four independent search passes. Do NOT claim "first adversarial fraud generation loop" or "first LLM-vs-detector arms race" in general terms — those individual pieces exist separately (FRAUD-RLA for adaptive tabular attacks, ProFraudGuard for closed-loop fraud retraining, EvoMail for the live-loop pattern itself), and a judge who knows the space will call that out. Before the deck is final, get someone to nail down whether ProFraudGuard's PAFT is genuinely live/runtime or an offline training recipe — that single fact determines whether your closest competitor is a near-miss or a real overlap. Everything else checked out clean: nothing found erodes the core claim, it just narrows exactly which part of it is actually new.
+---
+
+## 8. Completeness Check (21 Aug 2026)
+
+Fifth research pass, same day, hunting for gaps across newsletters, hackathons, academic papers
+(2 targeted verification questions), India/UPI specifics, and an unanchored broad sweep. Two open
+questions from section 7 are now resolved. Several genuinely new items surfaced — none change the
+core novelty verdict, but two (the organizer's own taxonomy, and the dead UPI-collect vector)
+require concrete action before submission.
+
+### Two resolved questions
+
+**ProFraudGuard: confirmed OFFLINE, not live/runtime.** Full PDF (not just the Amazon Science
+abstract) read directly. Section 6.1: "the PAFT loop runs entirely offline (end-of-day batch
+process), and the LLM generator is never deployed during serving. Only the lightweight DistilBERT
+detector serves online..." "Real-time" in the paper describes only frozen-detector inference
+latency, not the adversarial loop. This closes the open question in Chhal's favor — the closest
+published closed-loop fraud system deliberately avoided live/online adversarial training for
+cost/latency reasons. Ready-made pre-empt line for judges: "even ProFraudGuard's authors judged
+live adversarial retraining incompatible with real-time serving — Chhal's contribution is making
+that combination work live." Be ready for the natural follow-up: how does Chhal afford the compute
+cost ProFraudGuard's authors explicitly avoided? Have a one-line answer (loop cadence / model
+size / scope of "live" during the demo window).
+
+**UPI P2P "collect request": confirmed TRUE, discontinued.** NPCI Circular
+NPCI/UPI/OC/220/2025-26 (29 Jul 2025), effective 1 Oct 2025 — P2P collect requests can no longer be
+initiated, routed, or processed. Cross-confirmed by two independent regtech trackers citing the
+exact circular number (TeamLease RegTech, Complinity) plus concordant Aug 2025 trade press
+(Business Standard, Medianama, BusinessToday) and 2026-dated scam guides referencing it as already
+in force. Scope: P2P only — merchant collect requests (Amazon/Flipkart/IRCTC-style checkout) are
+unaffected. **Action required**: if any Chhal attack vector models a fraudster sending a disguised
+P2P collect request, that mechanism has been dead in production for ~11 months. Either (a) reframe
+explicitly as historical/pre-patch — "this was the dominant vector until NPCI closed it Oct 2025,
+here's how closing it forced fraudsters elsewhere" (arguably a stronger narrative, shows current
+domain knowledge), or (b) swap to a still-live mechanism — see below.
+
+### New, actionable: organizer's own three-phase taxonomy (primary source)
+
+The luma registration page (`luma.com/kyz978xv`) states the challenge verbatim as three named
+phases, not a generic red/blue framing:
+
+> **Identify** — "Research and surface emerging GenAI-powered fraud attacks targeting payments."
+> **Generate** — "Build agents that simulate those attacks at scale."
+> **Defend** — "Build an AI/ML solution that detects, flags and mitigates them."
+
+Not previously captured verbatim. Structure the deck, README, and demo walkthrough around these
+exact three headers — a judge will likely score against the organizer's own taxonomy even absent a
+published rubric. Note "agents" (plural) for Generate — reinforces the existing doc's push for
+genuine multi-step/agentic generation over a single prompt-to-CSV script.
+
+### New: still-live UPI fraud patterns to consider as swap-ins or additions
+
+- **QR code tampering/swap fraud** — physical fraudulent QR stickers over real merchant codes;
+  documented Jan 2026 Pune case (₹14K over 3 days). NPCI piloting "SafePay" QR verification
+  (50 cities by Sept 2026); RBI advisories treat it as unsolved. A generator that crafts a spoofed
+  merchant QR / `upi://pay?pa=...&am=...&tn=...` deep-link payload (fake payee VPA, manipulated
+  amount/note) is a genuinely non-tabular generated artifact — directly answers the existing doc's
+  #1 gap (GenAI artifact vs. perturbed rows) better than anything currently in the doc.
+- **Autopay/mandate-hijack fraud** — phishing link disguised as KYC-update/courier-redelivery
+  silently authorizes a recurring UPI AutoPay mandate (₹5K–15K/cycle) instead of a one-time debit.
+  Mechanistically distinct from the dead collect-request vector, currently unpatched — cleanest
+  direct swap-in if the team wants to keep a "victim approves something disguised as harmless"
+  narrative.
+- **Fake payment-screenshot scam** (merchant-facing, doctored "payment successful" screenshot) —
+  different fraud shape, lower priority given 10 days left, mention only if breadth is wanted.
+- **Regulatory context for realism**: RBI's mandatory 2FA directions (issued 25 Sep 2025, binding
+  since 1 Apr 2026) mean any attack vector assuming single-factor authorization now reads as
+  stale — worth a sentence of acknowledgment. Separately, RBI's Apr 2026 discussion paper (1-hr
+  hold on >₹10K P2P transfers, kill-switch, mule-ceiling) is proposal-only, not law — safe to cite
+  as "where regulation is heading," not as an active control. A 4 Aug 2026 Supreme Court order
+  directing RBI to issue a mule-account debit-hold SOP within 4 weeks (due ~now/early Sept) is a
+  fresh, citable regulatory-pressure data point for any mule-account framing.
+
+### New competitive precedent: Gray Swan Arena "Safeguards Challenge" (Feb–May 2026)
+
+Not previously named as a specific event (section 5 only mentions "Gray Swan AI Arena" generically
+for judging methodology). This is the closest real-world precedent found anywhere to Chhal's own
+"live, alternating attack/defense loop" framing: red teams probed a live multi-agent
+customer-support system, blue teams refined defenses, attack/defense phases alternated live over
+three months. Attack objectives explicitly included fraudulent transactions (unauthorized
+refunds/credits via prompt injection). $140K pool, co-sponsored by UK AISI, OpenAI, Anthropic,
+Amazon, Google DeepMind, Meta.
+
+Matters for two reasons: (1) it's a strong new citation for section 7's "closest precedent"
+argument, and (2) it's a real risk — if a judge has seen Gray Swan, a bare "live closed loop"
+claim alone won't land as novel. It's unclear whether Gray Swan's "blue team refines defenses"
+meant model retraining or just prompt/rule iteration (worth naming that ambiguity explicitly, same
+as the doc already does for ProFraudGuard/EvoMail). Keep leaning on tabular-payments +
+multi-vector + actual model retraining as the differentiator — that argument already stands, this
+just adds a citation Chhal should get ahead of rather than be blindsided by.
+
+### New: PSB "CyberShield" hackathon — detail fills in a bare name already in section 1
+
+Section 1 already lists "PSB Hackathon Series" with zero detail; now confirmed as Bank of India ×
+IIT Hyderabad, portal boihackathon.cse.iith.ac.in, spanning 12 PSBs, DFS/Ministry of Finance + IBA
+backed, ₹20L pool, timeline May 7–Aug 28 2026 with final presentations Aug 27–28 — three days
+before Chhal's deadline, same GFF ecosystem. Themes: fraudulent mobile apps, mule-account
+detection, generative AI for malware — confirmed detection-only, no adversarial-generation/
+closed-loop framing, so it doesn't erode novelty. But it's close enough in time/theme/judge-overlap
+that the team should have one line ready: "PSB tracks are detection-only prototypes; Chhal's closed
+attack↔defend loop is the differentiator."
+
+### New: Mastercard's own shipped GenAI fraud products — judges will know these, have a differentiator ready
+
+Not previously in the doc. Two real, deployed products:
+- **Decision Intelligence Pro** — transformer + in-house RNN, trained on ~125–143B annual
+  transactions, ~20% avg fraud-detection lift, >85% false-positive reduction.
+- **Cyber Secure** — generative AI reconstructs full card numbers from partial numbers found on
+  the dark web, paired with graph tech for card/merchant risk mapping.
+
+Checked directly against primary sources (CDO Magazine, PYMNTS) after an initial search result
+falsely implied a synthetic-fraud-generation/closed-loop-retrain component — that claim did not
+survive checking the actual articles. Neither product has a confirmed adversarial-generation or
+closed-loop component, so this doesn't threaten Chhal's novelty claim. But a Mastercard judge will
+very likely ask "how is this different from what we already ship" — have the one-liner ready:
+"DI Pro and Cyber Secure are GenAI on the detection side only; Chhal is the adversarial
+generator-vs-detector arms race neither one runs."
+
+(Separately, Mastercard showcased a Large Tabular Model / gen-AI fraud engine built on NVIDIA NeMo
+AutoModel + Databricks at GTC 2026, claiming 200% false-positive reduction — product news, not a
+hackathon, but the same "know the judges' own tooling" logic applies to the LightGBM detector
+comparison.)
+
+### New citations worth adding to the deck / source list
+
+| Item | What it's for | Link |
+|---|---|---|
+| **Proof.com — "The Fraud Files"** | Monthly, confirmed live cadence, explicitly catalogs agentic-AI-fraud incidents by risk category — cleanest recurring "agentic fraud" news beat found | proof.com |
+| **The Paypers — Fraud & Fincrime vertical** | Global payments trade press actively tracking RBI/UPI regulatory beat (surfaced RBI's Apr 2026 UPI proposal directly) | thepaypers.com/fraud-and-fincrime |
+| **Anthropic Alignment Science Blog** | Recurring 2026 output studying models "assisting fraud" as an explicit harm category + red-teaming framework — methodology citation, not a newsletter | alignment.anthropic.com |
+| **METR blog** | Recurring "Frontier Risk Report" series + Mar 2026 red-teaming-agent-monitoring post | metr.org/blog |
+| **"Foe for Fraud: Transferable Adversarial Attacks in Credit Card Fraud Detection"** (arXiv:2508.14699, Aug 2025) | Confirms tabular adversarial-attack space is active; frozen classifier only, no retrain — doesn't touch Chhal's mechanism, minor background citation | arxiv.org/abs/2508.14699 |
+| **"Synthetic Tabular Generators Fail to Preserve Behavioral Fraud Patterns"** (arXiv:2604.13125, Apr 2026) | Actionable build-quality check: proves row-independent generators can't reproduce multi-account/velocity fraud motifs — directly test whether Chhal's attack generator models entity/velocity structure or generates rows independently; citable either as a caution or as justification for that design choice | arxiv.org/abs/2604.13125 |
+
+### Checked, nothing new found
+
+- Newsletter link spot-checks (PYMNTS, tl;dr sec) — both live and active, no fix needed.
+- No second Mastercard Innovation Challenge edition, no NPCI/ONDC-branded hackathon, no rival
+  "Chhal" build or naming collision anywhere.
+- Freshness sweep of the closed-loop/live-retrain/multi-vector-tabular combination (2026 papers) —
+  nothing found beats or matches ProFraudGuard/FRAUD-RLA/EvoMail as the closest precedents;
+  section 7's core claim stands unchanged.
+- RSAC 2026 / DEF CON 34 / Black Hat 2026 AI-security hackathons — general AppSec, not
+  fraud/payments-specific, not relevant.
+- DTCC Innovate.DTCC AI Hackathon — real, fraud-themed, but capital-markets fraud, already
+  concluded, low relevance.
+
+### Weak/unverified, flag only — do not cite without further check
+
+- **RaptorXAI (India, 2024 patent filing)** — secondhand via a PatSnap blog post claiming an
+  LLM-driven LightGBM feature-generation/retrain patent. Architecturally close to Chhal's detector
+  stack but defense-side only (no adversarial component), and unverified beyond one blog post.
+  Five-minute IP India search before citing, if wanted at all.
+- **IFIF 2026 AI Hackathon** (India Finance & Innovation Forum) — real, fraud/KYC/credit tracks,
+  but no adversarial framing, standard detection hackathon. Not worth deck space.
