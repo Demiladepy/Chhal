@@ -376,3 +376,78 @@ skip for this purpose.)
 **Practical recommendation:** **PYMNTS + tl;dr sec** — daily fraud-industry signal plus weekly technical
 AI-security signal, both free, both high frequency. Add AISecHub's monthly digest for deeper
 red-team/adversarial-ML technical detail.
+
+---
+
+## 7. Novelty Cross-Check — Academic Literature Deep-Dive (21 Aug 2026)
+
+Follow-up pass, 10 days before the 31 Aug deadline, specifically testing whether Chhal's live
+closed-loop claim survives contact with the academic literature (not just competition precedent,
+covered in section 4 above). 4 independent research angles — GenAI-generated fraud artifacts,
+live/online adversarial retraining loops, multi-modal fraud fusion, and agentic-fraud literature —
+cross-referenced and synthesized below.
+
+# Chhal Novelty Cross-Check: Synthesis of 4 Research Angles
+
+## 1. TL;DR Verdict
+
+**Partially novel — survives, but on a narrower claim than "nobody's doing this."** No published system combines all three of: (a) LLM-driven **multi-vector** tabular attack generation, (b) a detector that **retrains** (not just gets attacked), and (c) the loop running **live during actual deployment/competition runtime** rather than as an offline training procedure. That specific triple-combination is unclaimed. But two of its three legs are separately, closely covered: **FRAUD-RLA** (Feb 2025) does adaptive RL attacks on a real tabular credit-card detector — it's just missing the retrain half. **ProFraudGuard** (Amazon, KDD 2026 workshop) does closed-loop adversarial fine-tuning with an LLM generator in a real fraud domain — it's just missing the tabular-payments domain and (unverified) the "live during runtime" framing. Chhal's actual novelty rests on the **combination and the runtime-liveness**, not on any single piece being unprecedented. Don't claim "first ever adversarial fraud loop" — claim "first to close the loop live, during operation, across multiple tabular payment-fraud vectors simultaneously." That claim holds.
+
+---
+
+## 2. What's Already Been Done
+
+Ranked by how close each comes to overlapping Chhal's actual claim (live, multi-vector, tabular, closed-loop, LLM-driven generator).
+
+| # | Paper/System | Venue/Year | URL | Mechanism | Overlap verdict |
+|---|---|---|---|---|---|
+| 1 | **ProFraudGuard** — Singh, Kumar, Nagarajan (Amazon) | KDD 2026 Workshop on AI for Fraud and Abuse | [amazon.science](https://www.amazon.science/publications/profraudguard-proactive-adversarial-fine-tuning-of-fraud-detectors-with-inverse-reinforcement-learning) | LLM generator simulates fraudulent business-registration attempts vs. a risk detector, trained via "Proactive Adversarial Fine-Tuning" (PAFT) with claimed convergence guarantees | **Closest on paper.** Fraud domain, LLM generator, closed-loop, 2026, explicit co-evolution. Differs: single vector (registration/KYC fraud, not payments), and — critically unverified — whether PAFT runs live during deployment or is an offline pre-ship training recipe. No arXiv version exists, only an Amazon Science abstract page; this is the one item worth chasing down before you finalize your novelty language. |
+| 2 | **FRAUD-RLA** — Lunghi, Molinghen, Simitsis, Lenaerts, Bontempi | arXiv:2502.02290, Feb 2025 | [arxiv.org/abs/2502.02290](https://arxiv.org/abs/2502.02290) | PPO agent iteratively adapts attack policy over rounds to evade a real credit-card fraud detector | **Closest on domain** (tabular, payments, real credit-card data, adaptive rounds). Verified directly from the PDF: the detector is explicitly frozen/queried-only across all rounds (Algorithm 1) — it never retrains. This is the cleanest "half of Chhal's loop, published" precedent. |
+| 3 | Multi-round adversarial graph-based promo fraud detection (author list unverified — paywalled) | Social Network Analysis and Mining (Springer) / OpenReview, 2025-2026 | [springer](https://link.springer.com/article/10.1007/s13278-025-01566-0), [openreview](https://openreview.net/pdf/a77e2c9622033b215c96dedc6320ad223a96e589.pdf) | Detector retrained/re-evaluated across rounds as a rule-based fraud-behavior generator evolves a fraud graph | Same *shape* as Chhal (repeated detector retraining against an adversary) but graph-structured promo/referral fraud, and the generator is heuristic/rule-based, not an optimizer or LLM adapting to the live decision boundary. Confirms the multi-round-retrain pattern is emerging in fraud research generally, one notch weaker on the generator side than Chhal. |
+| 4 | **SHERLOCK** — Lu et al. (JD.com + Beijing Jiaotong Univ) | ACM KDD '26, Aug 2026 | [arxiv.org/pdf/2510.08948](https://arxiv.org/pdf/2510.08948) | Transaction/tabular features fused with product/merchant text via RAG; continuously updated knowledge base ("Data Flywheel") from investigator feedback, validated over a live 90-day production window | Closest published "adapts during live operation" precedent for a multimodal fraud system. But it's reactive/human-in-the-loop (investigator outcomes feed back), not adversarial — there's no generative red-team being fought. E-commerce trust/safety, not payment/card fraud. |
+| 5 | **EvoMail** — Huang et al. | arXiv:2509.21129, Sep 2025 | [arxiv.org/pdf/2509.21129](https://arxiv.org/pdf/2509.21129) | Genuine live closed loop: one agent generates evasive phishing emails, a defense classifier retrains against them in real time, repeated | The clearest existing proof that the "generate → evade → retrain → repeat, live" *pattern itself* has been built and published — just single-modality (email text), not tabular, not payments. Good evidence the architecture is sound; bad news is it means "live adversarial retrain loop" as a bare pattern is not itself unclaimed — your novelty is domain + multi-vector + tabular, not the loop concept alone. |
+| 6 | Multimodal financial-fraud fusion (Nie, Long, Fang, Gao) — *cross-confirmed by two independent research angles* | Journal of Data and Information Science, 2025, 10(4) | [DOI: 10.2478/jdis-2025-0046](https://www.degruyterbrill.com/document/doi/10.2478/jdis-2025-0046/html) | LLM-derived text-summary vectors fused with 19 financial + 11 governance tabular indicators into a GBDT for corporate accounting-fraud prediction | Text+tabular fusion works and is published — but static, defensive-only, corporate 10-K fraud (not payments), no generative attacker, no loop. Kills "text+tabular fusion is unprecedented" as a bare claim; doesn't touch Chhal's actual mechanism. |
+| 7 | LLM-GRU-GAN (unverified — 403-walled, possibly non-peer-reviewed) | ResearchGate, ~2026 | [researchgate.net/publication/405492823](https://www.researchgate.net/publication/405492823_LLM-GRU-GAN_A_Multi-Modal_Adversarial_Framework_for_Transactional_Fraud_Detection) | LLM → semantic graph embeddings, GRU temporal modeling, GAN generates synthetic fraud samples | Architecturally closest name-match to "LLM + adversarial generation + tabular fraud" — but the GAN is doing class-imbalance oversampling, not live red-team evasion against a running detector. Worth a closer read if you have time; too unverified to lean on as-is. |
+| 8 | MultiAgentFraudBench (Ren et al.) | ICLR 2026 | [arxiv.org/abs/2511.06448](https://arxiv.org/abs/2511.06448) | LLM agents collude on romance/investment/phishing scams against simulated victims; mitigation tested as static intervention | Confirms "agentic fraud" is now a live 2026 academic topic — but text/dialogue only, no tabular data, no retraining loop, mitigation is a one-shot filter test not adapt-retrain. |
+| 9 | AISI Network methodology paper (69 co-authors, Singapore/UK/Japan/Australia/etc.) | arXiv:2601.15679, Jan 2026 | [arxiv.org/abs/2601.15679](https://arxiv.org/abs/2601.15679) | Cross-government exercise on *how to evaluate* agentic AI for fraud risk; no finalized benchmark | Not a system at all — but a government-level admission, Jan 2026, that agentic-fraud evaluation methodology is still nascent. Strong "the field itself says this is unsolved" citation. |
+| 10 | Document/identity-fraud generation papers (AIForge-Doc, GPT4o-Receipt, "From Forgeries to Foundation Models" survey) | arXiv 2602–2607.xxxx, 2026 | see below | GenAI-generated fake receipts, forms, IDs, and a survey confirming document-fraud research stays siloed from transaction fraud | Zero tabular overlap — confirms document/image-fraud and transaction-fraud research literatures still don't talk to each other. Relevant only if Chhal considers a future document-vector extension. |
+
+**Deduplication note:** the Nie et al. (JDIS 2025) paper and the SHERLOCK paper were independently surfaced by both the `genai-artifact` and `multimodal-fusion` angles — same papers, consolidated above (rows 4 and 6). The "From Forgeries to Foundation Models" survey (arXiv:2607.01442) was also surfaced by both angles.
+
+---
+
+## 3. What's Still Genuinely Open
+
+Specific, technical, unclaimed territory as of this search:
+
+1. **The full triple-combination itself.** No paper closes all three: LLM-driven generator → multiple, distinct tabular attack vectors → detector retrains → loop executes live within an actual deployment/competition runtime (not as an offline training epoch schedule). FRAUD-RLA has the tabular-payments domain + adaptive attacker but a frozen detector. ProFraudGuard has the closed retrain loop + LLM generator but a single non-payments vector and unconfirmed runtime-liveness. Nobody has both.
+
+2. **Multi-vector diversity in one loop.** Every closed-loop or adaptive-attacker system found (ProFraudGuard, FRAUD-RLA, EvoMail, the graph promo-fraud paper) targets **one** attack pattern. A single live loop juggling threshold-hugging evasion, synthetic-identity bustout, card testing, and a UPI-style scam simultaneously — where the detector's retraining on one vector has to hold against the others too — is not addressed anywhere found.
+
+3. **"Runtime" as an actual architectural claim, not a training-recipe claim.** Several papers use "live," "dynamic," "adaptive," or "proactive" language (ProFraudGuard, SHERLOCK) but on inspection describe either offline training procedures or human-in-the-loop reactive updates, not an adversary-vs-detector loop literally executing during a bounded live event. This distinction is exactly where Chhal can stake a clean, specific, technically defensible claim — but only if the architecture genuinely does this (verify your own implementation matches this description before claiming it).
+
+4. **(Stretch, not currently in Chhal's scope)** Fusing an LLM-generated document/text artifact's derived features into the same tabular retrain loop. Confirmed open by two independent angles and a July 2026 survey stating document-fraud and transaction-fraud research remain siloed. Not worth chasing before Aug 31 unless you have spare runway — flagged here as an honest "if you had more time" answer, not a claim to make about the current 4-vector, tabular-only build.
+
+**One operational flag, not a novelty issue:** one research pass surfaced that NPCI/RBI reportedly discontinued P2P UPI "collect request" (pull) transactions effective Oct 1, 2025. Worth a quick independent confirmation — if true, your UPI-collect-scam vector may be modeling a since-patched mechanism, which a Mastercard/NPCI-adjacent judge could flag. Consider reframing that vector's narrative or swapping to a still-live UPI fraud pattern (QR/deep-link push scams) if confirmed.
+
+---
+
+## 4. Recommended Citations for the Pitch Deck
+
+Beyond the papers already in your background list:
+
+1. **ProFraudGuard** (Amazon, KDD 2026 workshop) — cite as the closest published system and explicitly differentiate: multi-vector tabular payments vs. their single onboarding-fraud vector; LightGBM + engineered features vs. their LLM-only detector; and flag (honestly, in your own words) that their "proactive" framing does not confirm live-runtime execution the way Chhal's does.
+
+2. **FRAUD-RLA** (arXiv:2502.02290) — your cleanest, most defensible contrast citation. "Prior RL attacks on tabular fraud detectors adapt the attacker only, against a frozen classifier (Algorithm 1). Chhal closes this loop by retraining the detector each round on what it catches." This is verified firsthand from the PDF, safe to state with confidence.
+
+3. **AISI International Network methodology paper** (arXiv:2601.15679) — a 69-co-author, multi-government (Singapore AISI leading the fraud strand) admission, Jan 2026, that agentic-fraud evaluation methodology is still nascent. Use it to argue the field itself says live agentic/adversarial fraud evaluation is unsolved — strengthens the "why does this matter" framing without you having to assert it unsupported.
+
+4. **SHERLOCK** (arXiv:2510.08948, KDD '26) — cite as the closest "adapts during live operation" precedent, then contrast: reactive human-investigator feedback loop vs. Chhal's adversarial generator constantly probing the live decision boundary. Useful for showing judges you know the adjacent state of the art, not just claiming a vacuum.
+
+5. **EvoMail** (arXiv:2509.21129) — cite to show the live generate-evade-retrain loop pattern is validated and works in a security-adjacent domain (email/phishing), then note nobody has run it on multi-vector tabular payment fraud. Good for pre-empting the "hasn't this been done with GANs/RL before" question with a direct, honest answer instead of dodging it.
+
+---
+
+## 5. Bottom Line for the Team
+
+Claim this: **"a live, multi-vector, closed-loop adversarial system for tabular payment fraud, where an LLM-driven attacker and a LightGBM detector both adapt repeatedly during actual competition runtime."** That specific combination is not published anywhere found across four independent search passes. Do NOT claim "first adversarial fraud generation loop" or "first LLM-vs-detector arms race" in general terms — those individual pieces exist separately (FRAUD-RLA for adaptive tabular attacks, ProFraudGuard for closed-loop fraud retraining, EvoMail for the live-loop pattern itself), and a judge who knows the space will call that out. Before the deck is final, get someone to nail down whether ProFraudGuard's PAFT is genuinely live/runtime or an offline training recipe — that single fact determines whether your closest competitor is a near-miss or a real overlap. Everything else checked out clean: nothing found erodes the core claim, it just narrows exactly which part of it is actually new.
