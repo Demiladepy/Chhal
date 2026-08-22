@@ -2,6 +2,9 @@
 
 **Mastercard Innovation Challenge @ GFF 2026 · AI Defense Lab for Payment Security**
 
+**Landing page:** [`web/index.html`](web/index.html) — a self-contained pitch page (serve it,
+or host it on GitHub Pages).
+
 > *Chhal* (छल) — *deception*. Every deception the attacker invents becomes the training
 > ground for a defence that learns to see through it, and every gap the defence reveals
 > feeds the next deception.
