@@ -59,14 +59,14 @@ Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~85s):
 
 | metric | baseline | after the loop |
 |---|---|---|
-| recall @ **0.1%** of legit flagged | 0.00% | **98.90%** |
-| recall @ 0.5% | 0.00% | 98.95% |
-| recall @ 1.0% | 0.00% | 99.10% |
-| **PR AUC** | 0.0072 | **0.9923** |
-| alert rate (share of all traffic) | 0.10% | 1.467% |
+| recall @ **0.1%** of legit flagged | 0.00% | **97.15%** |
+| recall @ 0.5% | 0.40% | 99.55% |
+| recall @ 1.0% | 0.40% | 99.75% |
+| **PR AUC** | 0.0083 | **0.9928** |
+| alert rate (share of all traffic) | 0.10% | 1.443% |
 
-For comparison, the naive 0.5 cutoff on the same run: F1 0.0 → 0.9656, ROC AUC 0.9987, FP on
-legit 0.08%. The ROC number is the one to distrust.
+For comparison, the naive 0.5 cutoff on the same run: F1 0.0065 → 0.8937, ROC AUC 0.9997, FP on
+legit 0.32%. The ROC number is the one to distrust.
 
 The baseline catching **zero** is not a broken detector — the benchmark attacks were
 optimised specifically to evade it, which is the optimizer doing its job. The claim that
@@ -96,6 +96,7 @@ python scripts/generalisation_check.py  # leave-one-vector-out: recall on an UNS
 python scripts/mitigation_report.py     # score -> action -> money
 python scripts/ensemble_check.py        # does a second detector arm earn its place?
 python scripts/latency_check.py         # can it run inside an authorization?
+python scripts/feature_ablation.py      # why the feature space looks the way it does
 
 streamlit run dashboard/app.py        # the 3-panel live demo (replays results/)
 python -m pytest tests/ -q            # contract, optimizer, loop, fidelity, mitigation
@@ -211,13 +212,15 @@ detector never saw, 4.49% fraud):
 
 | policy | cost per 1k txns | loss avoided |
 |---|---|---|
-| do nothing | $8,372.50 | — |
-| block at `score >= 0.5` | $5,938.46 | 29.1% |
-| **expected-cost policy** | **$3,155.72** | **62.3%** |
+| do nothing | $8,171.74 | — |
+| block at `score >= 0.5` | $4,943.72 | 39.5% |
+| **expected-cost policy** | **$2,591.62** | **68.3%** |
 
-It declines **0.031%** of real customers outright, against 0.086% for the fixed
-threshold, while stopping or challenging 76.5% of all fraud — because most of the work
-is done by cheap OTP challenges (26.8% of traffic) rather than declines (1.1%).
+It declines **0.133%** of real customers outright, against 0.394% for the fixed
+threshold, while stopping or challenging 77.4% of all fraud. Note that both decline rates
+rose once the linkage block was added: the detector is genuinely more confident on real
+fraud, so blocking becomes economically correct more often. That is the policy working,
+but it is a real cost and the cost model is where to argue about it.
 
 ### An honest split we are not hiding
 
@@ -225,16 +228,18 @@ Recall at 0.1% false positives on real legitimate traffic, by segment:
 
 | segment | recall |
 |---|---|
-| unseen adaptive attacks (our red team) | **98.8%** |
-| real IEEE-CIS fraud | **3.6%** |
+| unseen adaptive attacks (our red team) | **94.3%** |
+| real IEEE-CIS fraud | **20.0%** |
 
-The loop beats its own red team and barely detects ordinary card fraud. That is a
-feature-space limit, not a modelling one: twelve hand-derived features were chosen to
-carry the *attack* narrative, where IEEE-CIS leaderboard entries use several hundred
-engineered ones. Reporting the blended 26.0% would hide both halves. The mitigation
-layer is what partially rescues it — 69.3% of real fraud still gets stopped or
-challenged, because a cheap OTP is worth issuing on a weak signal even when an outright
-decline is not.
+Real fraud was **3.6%** before the linkage block was added — see
+[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts). It is now 20.0%,
+a 5.5x lift, and adaptive-attack recall paid 4.5 points for it: the detector has strong
+real-fraud features now and leans on them. That trade is visible rather than hidden, and
+it is the right one for a submission that has to work on real payments.
+
+Reporting the blended 37.7% would hide both halves. The mitigation layer closes more of
+the remaining gap — 70.6% of real fraud gets stopped or challenged, because a cheap OTP
+is worth issuing on a weak signal even when an outright decline is not.
 
 ## A second arm — and an honest negative result
 
@@ -248,27 +253,118 @@ false-positive budget:
 
 | variant | unseen attack family | real IEEE-CIS fraud |
 |---|---|---|
-| supervised only | 0.8855 | 0.0296 |
-| **max fusion** (either arm flags) | **0.8735** ✗ | **0.0200** ✗ |
-| **stacked** (anomaly score as a feature) | **0.8980** ✓ | 0.0287 |
+| **supervised only** | **0.8840** | 0.1820 |
+| max fusion (either arm flags) | 0.8345 ✗ | 0.1362 ✗ |
+| stacked (anomaly score as a feature) | 0.8655 ✗ | 0.1864 |
 
-**The anomaly arm alone scores 0.002 on unseen attacks and 0.000 on real fraud.** Fusing
-it by `max` is actively worse than not having it — it spends part of the false-positive
-budget on an arm that carries 0.2% of the catches. Only stacking its score as an input
-*feature* helps, +1.25 points on an unseen family. It also costs 76.5MB of the 78MB total
-model footprint and takes single-transaction latency from 0.26ms to 1.18ms, so whether
-+1.25 points is worth it is a real decision, not an obvious one.
+**The anomaly arm alone scores 0.000 on unseen attacks and 0.006 on real fraud.** Both
+fusions now lose: `max` badly, stacking by 1.85 points on unseen families for +0.4 on
+real fraud. It also costs 32MB of the 34MB model footprint.
+
+**This verdict changed, and the change is the point.** On the earlier twelve-feature
+space, stacking was worth +1.25 points and we shipped it. Once the linkage block arrived
+and real-fraud recall went from 3.6% to 20%, the supervised arm had enough signal that an
+outlier score added nothing but false positives. A component that earns its place at one
+stage of a project can stop earning it at the next, and the only way to know is to keep
+re-running the measurement rather than trusting the decision that was once correct.
+**Neither fusion is used by default now.** Both remain in the repo so the result stays
+reproducible.
 
 The reason is our own doing, and it is the interesting part. Attack rows are drawn
-through the inverse CDF of real legitimate traffic and then clipped to the plausibility
-manifold — they are on-manifold **by construction**, because that is precisely what the
-fidelity guardrail guarantees. A detector whose whole question is "is this off-manifold?"
-cannot see them. **The better the fidelity claim gets, the less an outlier detector can
-contribute.** `test_anomaly_arm_is_blind_to_on_manifold_attacks` locks that in.
+through the inverse CDF of real legitimate traffic, clipped to the plausibility manifold,
+and now mounted on real accounts whose issuer-side context they inherit outright — they
+are on-manifold **by construction**, because that is precisely what the fidelity work
+guarantees. A detector whose whole question is "is this off-manifold?" cannot see them.
+**The better the fidelity claim gets, the less an outlier detector can contribute**, and
+the numbers above moved exactly that way. `test_anomaly_arm_is_blind_to_on_manifold_attacks`
+locks it in.
 
 `StackedDetector` exposes the same surface as `Detector`, so the loop, evaluation and the
 mitigation policy take it unchanged. The anomaly score is an issuer-side signal computed
 at scoring time, not something an attacker sets, so `FEATURE_COLUMNS` stays frozen.
+
+## Mounting attacks on real accounts
+
+The twelve hand-derived features caught **3.1%** of real IEEE-CIS fraud at a 0.1%
+false-positive budget. Adding the dataset's anonymised entity-linkage counts (`C1-C14` —
+how many addresses, devices, emails and cards associate with this card) takes that to
+**19.7%**. `scripts/feature_ablation.py`:
+
+| features | n | recall @ 0.1% FPR | PR AUC |
+|---|---|---|---|
+| the 12 we hand-derived | 12 | 3.06% | 0.189 |
+| + linkage counts **we built ourselves** | 20 | 3.22% | 0.195 |
+| **+ the dataset's C1-C14** | 26 | **19.73%** | **0.474** |
+| + both | 34 | 20.35% | 0.472 |
+| + C1-C14 and D1-D15 | 41 | 19.29% | 0.488 |
+| + everything incl. all 339 V-features | 388 | 21.63% | 0.471 |
+
+Three things fall out of that table. The linkage block is the entire story — all 339
+V-features add under two points on top of it, and `D1-D15` add nothing. We tried to
+rebuild the same signal from what we *do* understand (distinct counterparties, addresses,
+emails and card attributes per account over time, plus longer velocity windows) and
+recovered **+0.16 points**. And putting ours on top of theirs is a wash: marginally better
+at the tightest budget, marginally worse at looser ones and on PR AUC — noise, not signal.
+They are subsumed, not merely weaker. Whatever C1-C14 aggregate over lives in devices,
+phones, IPs and cross-card relationships this dataset does not expose.
+
+### So the red team compromises a real card
+
+A red team does not invent its victims. Each campaign is now mounted on a **real,
+never-fraudulent account** ([`chhal/redteam/hosts.py`](chhal/redteam/hosts.py)). Its
+linkage history, its age, the issuer's opinion of its merchants are whatever they
+actually were, because they belong to an account that really existed in the data. The
+story is the true one: an ordinary customer's card was taken over.
+
+The feature space partitions cleanly, and the partition is the design:
+
+| | count | who sets it |
+|---|---|---|
+| **attacker-controlled** | 9 | the fraudster: amount, timing, velocity, payee, rail, destination |
+| **inherited** | 16 | the issuer: account age, merchant risk, the 14 linkage counts |
+| derived from the timeline | 1 | `day_of_week` |
+
+The evasion optimizer moves only the first group, and a test asserts it leaves the second
+byte-identical. It also **only clips the first group** to the plausibility manifold: a
+value a real account actually held is plausible by definition, and clipping it to a
+q0.5%/q99.5% envelope would silently rewrite the issuer's own view of the card.
+
+### Leakage rules, all enforced in code
+
+- Only accounts whose every observed transaction is legitimate may host a campaign — a
+  fraudulent account's rows carry label information.
+- Evaluation pools exclude any account seen in training. 34.8% of test accounts also have
+  transactions before the temporal cut; excluding them removes the argument entirely.
+  (Belt and braces: hosts are all-legitimate, so recognising one would push an attack
+  toward *legit* and make detection harder, not easier.)
+- Attack transactions are timestamped strictly **after** the host's last real
+  transaction. A campaign continues an account; it cannot reach into its past.
+- Inherited values are read from the host's last real transaction — the most recent state
+  anyone could legitimately know at the moment of takeover.
+
+### What it cost and what it bought
+
+| | before | after |
+|---|---|---|
+| real IEEE-CIS fraud, recall @ 0.1% FPR | 3.6% | **20.0%** |
+| unseen adaptive attacks | 98.8% | 94.3% |
+| mimicry vector, KS distance from legit | 0.361 | **0.223** |
+| fraud loss avoided by the policy | 62.3% | **68.3%** |
+
+Fidelity improved sharply because sixteen of twenty-six features are now literally real
+values. Adaptive-attack recall paid 4.5 points, which is the honest consequence of the
+detector having real signal to lean on.
+
+### The limitation we are not hiding
+
+Linkage counts are **frozen** at the host's last observed values. A real takeover would
+nudge some of them — a new shipping address raises whatever counts addresses. We cannot
+model that, because we do not know what each column counts. Freezing is the conservative
+choice: it means the detector **cannot** use linkage to catch our attacks, only to catch
+real fraud. That is the correct behaviour for a feature the attacker does not control,
+and it is why adding this block did not inflate our own numbers.
+
+---
 
 ## Attacks are campaigns, not rows
 
@@ -300,10 +396,9 @@ relationships hold between these features in real data hold in the attacks, beca
 literally the same arithmetic. Consistency is not enforced afterwards, it is impossible to
 violate. `hour` and `day_of_week` come from the timestamps too.
 
-Each campaign also carries a short history of ordinary spend before the attack begins.
-That is what makes `amount_to_avg_ratio` mean *"large for this account"* rather than
-just *"large"* — a bust-out reads as anomalous against what that card actually spent,
-which is the entire signal.
+The history `amount_to_avg_ratio` is measured against is not generated either: it is the
+host account's **real** transaction history. A bust-out reads as anomalous against what
+that card actually spent, which is the entire signal.
 
 Account-level features (`account_age_days`, `is_cross_border`, `channel_code`) are
 sampled once per account and broadcast: one card does not change country or rail partway
@@ -324,15 +419,15 @@ python scripts/latency_check.py
 
 | | p50 | p95 | p99 |
 |---|---|---|---|
-| **full path, single transaction** | **1.18 ms** | 1.22 ms | **1.24 ms** |
-| detector alone, single transaction | 0.26 ms | — | — |
+| **full path, single transaction** | **1.26 ms** | 1.33 ms | **1.45 ms** |
 
-**~40× headroom** against a 50ms risk-decision budget at p99. Batch throughput is
-**138,907 txns/sec** (7.2 µs each) at a batch of 10,000 — that is the nightly-rescoring
+**~35× headroom** against a 50ms risk-decision budget at p99. Batch throughput is
+**171,344 txns/sec** (5.8 µs each) at a batch of 10,000 — that is the nightly-rescoring
 number, not the live-auth one, and should not be quoted as such.
 
-Model footprint is 78MB total, of which the anomaly arm is 76.5MB. There are no external
-lookups, no feature store and no network calls on the scoring path.
+Model footprint is 34MB, of which the anomaly arm is 32MB — dropping it, which the
+measurement above says to do anyway, leaves under 2MB. There are no external lookups, no
+feature store and no network calls on the scoring path.
 
 ## Repository layout
 
@@ -340,6 +435,7 @@ lookups, no feature store and no network calls on the scoring path.
 chhal/
   contract.py      # AttackBatch, ScoreReport, FEATURE_COLUMNS — the frozen interface
   data.py          # real IEEE-CIS base population (synthetic fallback); temporal split
+  redteam/hosts.py # real accounts a campaign may compromise, and the leakage rules
   detector.py      # LightGBM blue-team detector (gain-based feature importance)
   redteam/         # the four live-loop attack vectors, calibrated to the real population
   optimizer.py     # constrained evasion optimizer (the novel core)
@@ -351,6 +447,7 @@ chhal/
   redteam/campaign.py  # TemporalProfile — how each vector unfolds on an account
   loop.py          # orchestration -> the arms-race curve
 scripts/prepare_ieee.py          # one-time: raw IEEE-CIS -> derived FEATURE_COLUMNS
+scripts/feature_ablation.py      # which features carry the real-fraud signal, and why
 scripts/run_loop.py              # run the loop, write results/
 scripts/generalisation_check.py  # leave-one-vector-out recall on an unseen attack family
 scripts/mitigation_report.py     # calibrate, decide, price the policies
@@ -371,13 +468,16 @@ measured against a distribution we invented ourselves would prove nothing.
 python scripts/prepare_ieee.py     # downloads the real transactions, derives FEATURE_COLUMNS
 ```
 
-[`scripts/prepare_ieee.py`](scripts/prepare_ieee.py) derives all twelve features from raw
-IEEE-CIS: velocity, recency and amount-to-average are computed **within a reconstructed
+[`scripts/prepare_ieee.py`](scripts/prepare_ieee.py) derives all twenty-six features from
+raw IEEE-CIS: velocity, recency and amount-to-average are computed **within a reconstructed
 account** (`card1 + addr1 + first-seen-day`, the community-standard uid) over the real time
 ordering, using only transactions strictly before the row they describe. `account_age_days`
 is the dataset's own `D1`; `is_cross_border` is `addr2 != 87`; `merchant_risk` is a smoothed
-historical fraud rate fit **out-of-fold on the training split only**. Every approximation is
-documented in that file's header.
+historical fraud rate fit **out-of-fold on the training split only**; the fourteen
+entity-linkage counts are the dataset's own `C1-C14`, carried through unchanged and
+inherited rather than generated (see
+[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts)). Every
+approximation is documented in that file's header.
 
 The split is **temporal** — the first 75% of the window trains, the last 25% tests. A random
 split leaks future fraud patterns backwards and inflates every metric. The plausibility
@@ -386,8 +486,9 @@ manifold used by the evasion optimizer is computed on **train only**.
 ### The synthetic fallback, and why it is not the default
 
 `load_base_data(source="synthetic")` keeps the original programmatic distribution so the repo
-still runs end to end with no download. It should never be quoted, and measuring it against
-real data shows why:
+still runs end to end with no download. It cannot represent entity linkage at all — those
+counts aggregate over devices and cross-card relationships no generator here has, so they
+are zero-filled. It should never be quoted, and measuring it against real data shows why:
 
 | feature | real IEEE-CIS (p50) | synthetic (p50) |
 |---|---|---|

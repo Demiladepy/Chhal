@@ -39,11 +39,17 @@ from typing import Dict, Tuple
 import numpy as np
 import pandas as pd
 
-from .contract import FEATURE_COLUMNS, LABEL_COLUMN
+from .contract import FEATURE_COLUMNS, LABEL_COLUMN, LINKAGE_FEATURES
 
 DEFAULT_IEEE_PARQUET = os.environ.get(
     "CHHAL_IEEE_PARQUET", os.path.expanduser("~/chhal-data/ieee_base.parquet")
 )
+
+# Helper columns carried alongside the features, never part of them: which account a
+# transaction belongs to and when it happened. The red team needs both to mount a
+# campaign on a real account (see redteam/hosts.py). Every model path selects
+# FEATURE_COLUMNS explicitly, so their presence is inert.
+HOST_COLUMNS = ["_account", "_ts"]
 
 MANIFOLD_QUANTILES = [0.005, 0.05, 0.5, 0.95, 0.995]
 GRID = np.round(np.linspace(0.0, 1.0, 1001), 5)   # inverse-CDF grid for the red team
@@ -94,6 +100,8 @@ def _load_ieee(path: str, seed: int, max_rows: int | None) -> BaseData:
     df = pd.read_parquet(path)
     train = df[df["split"] == "train"].drop(columns=["split"]).reset_index(drop=True)
     test = df[df["split"] == "test"].drop(columns=["split"]).reset_index(drop=True)
+    if not set(HOST_COLUMNS) <= set(train.columns):
+        raise SystemExit(f"{path} predates the host pool; rerun scripts/prepare_ieee.py")
     if max_rows:   # stratified subsample for fast iteration; never for headline numbers
         rng = np.random.default_rng(seed)
         def sub(d, n):
@@ -109,12 +117,21 @@ def _load_ieee(path: str, seed: int, max_rows: int | None) -> BaseData:
 # ---------------------------------------------------------------------------
 # source: synthetic fallback (unchanged behaviour, kept for offline runs and tests)
 # ---------------------------------------------------------------------------
+def _synthetic_accounts(n: int, rng: np.random.Generator) -> tuple:
+    """Give the fallback accounts and a clock too, so the red team can mount campaigns on
+    it exactly as it does on real data. Roughly four transactions per account, spread over
+    a 180-day window."""
+    acct = rng.integers(0, max(n // 4, 1), n)
+    ts = np.sort(rng.integers(0, 180 * 86_400, n))
+    return acct, ts
+
+
 def _sample_legit(n: int, rng: np.random.Generator) -> pd.DataFrame:
     channel = rng.choice([0, 1, 2], size=n, p=[0.45, 0.45, 0.10])
     base_amt = np.where(channel == 1, rng.lognormal(6.0, 0.9, n),
                 np.where(channel == 0, rng.lognormal(7.2, 0.8, n),
                                        rng.lognormal(8.4, 0.7, n)))
-    return pd.DataFrame({
+    df = pd.DataFrame({
         "amount": np.round(base_amt, 2),
         "hour": rng.integers(0, 24, n),
         "day_of_week": rng.integers(0, 7, n),
@@ -129,10 +146,19 @@ def _sample_legit(n: int, rng: np.random.Generator) -> pd.DataFrame:
         "merchant_risk": np.clip(rng.beta(2.0, 8.0, n), 0, 1),
         LABEL_COLUMN: 0,
     })
+    acct, ts = _synthetic_accounts(n, rng)
+    df["_account"], df["_ts"] = acct, ts
+    # The fallback cannot represent entity linkage — those counts aggregate over devices,
+    # phones and cross-card relationships that no generator here has. They are zero-filled
+    # and carry no signal, which is one more reason this source must never be quoted.
+    for col in LINKAGE_FEATURES:
+        df[col] = 0.0
+    return df
 
 
 def _sample_baseline_fraud(n: int, rng: np.random.Generator) -> pd.DataFrame:
     df = _sample_legit(n, rng)
+    df["_account"] = df["_account"] + 1_000_000        # a disjoint account space
     df["amount"] = np.round(df["amount"] * rng.uniform(2.5, 6.0, n), 2)
     df["hour"] = rng.choice(list(range(0, 5)) + list(range(22, 24)), n)
     df["is_new_beneficiary"] = 1

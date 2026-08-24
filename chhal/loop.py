@@ -41,6 +41,7 @@ from .fidelity import fidelity_report
 from .optimizer import EvasionOptimizer
 from .redteam import ALL_VECTORS
 from .redteam.base import BaseProfile
+from .redteam.hosts import HostPool
 
 
 @dataclass
@@ -78,7 +79,18 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     # no absolute scale of its own — it describes where in legitimate traffic it sits,
     # so it must be told what legitimate traffic looks like here.
     profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
-    vectors = [V().calibrate(profile) for V in ALL_VECTORS]
+
+    # Two host pools, and which one a campaign is mounted on is a leakage decision.
+    # The FIXED BENCHMARK is the headline number, scored against test-side legitimate
+    # traffic, so its campaigns compromise TEST accounts — otherwise an evaluation attack
+    # would carry issuer-side context the detector trained on. The per-iteration attacks
+    # mostly exist to be retrained on, so they compromise TRAIN accounts.
+    train_hosts = HostPool(base.train)
+    test_hosts = HostPool(base.test, exclude_accounts=base.train['_account'])
+    print(f"[hosts] train: {train_hosts.describe()}")
+    print(f"[hosts] test:  {test_hosts.describe()}")
+    vectors = [V().calibrate(profile, train_hosts) for V in ALL_VECTORS]
+    bench_vectors = [V().calibrate(profile, test_hosts) for V in ALL_VECTORS]
     legit_eval = base.test[base.test[LABEL_COLUMN] == 0]
 
     # -- build the FIXED adversarial benchmark once, against the baseline detector ----
@@ -86,7 +98,7 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     # never trains on them — so improving on them proves generalisation, not memory.
     bench_batches = [
         optimizer.optimize(v.batch(cfg.benchmark_per_vector, 0, rng), detector, rng)
-        for v in vectors
+        for v in bench_vectors
     ]
     bench_attacks = pd.concat([b.transactions for b in bench_batches], ignore_index=True)
     bench_vec = np.concatenate([[b.vector_id] * len(b) for b in bench_batches])

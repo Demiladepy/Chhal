@@ -42,7 +42,7 @@ class EvasionOptimizer:
         # realistic manifold bounds from the base population
         self.lo = feature_stats.loc[0.005].copy()
         self.hi = feature_stats.loc[0.995].copy()
-        self._int_features = set(INTEGER_FEATURES)
+        self._int_features = set(INTEGER_FEATURES) & set(ATTACKER_CONTROLLED)
 
         # Integer features are rounded at the end of _clip_to_manifold, and rounding can
         # walk a value straight back out of the manifold: a q99.5 ceiling of 3.63 on
@@ -57,8 +57,17 @@ class EvasionOptimizer:
 
     # -- constraints ---------------------------------------------------------
     def _clip_to_manifold(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Pull attacker-controlled features back inside the plausibility envelope.
+
+        ONLY attacker-controlled features. Everything else on an attack row is either
+        derived from a real timeline or inherited from a real account, and a value a real
+        account actually held is plausible by definition — clipping it to a q0.5%/q99.5%
+        envelope would silently rewrite the issuer's own view of the card, which is
+        exactly what "inherited, not invented" forbids. The guardrail exists to stop the
+        SEARCH from leaving the manifold, and the search only moves these columns.
+        """
         df = df.copy()
-        for col in FEATURE_COLUMNS:
+        for col in ATTACKER_CONTROLLED:
             df[col] = df[col].clip(self.lo[col], self.hi[col])
         # business rules (hard, independent of the statistical manifold)
         df["amount"] = df["amount"].clip(lower=0.5)

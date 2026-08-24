@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp
 
-from .contract import FEATURE_COLUMNS
+from .contract import ATTACKER_CONTROLLED, FEATURE_COLUMNS
 
 MIMICRY_VECTOR = "threshold_hugging"
 
@@ -60,7 +60,11 @@ def ks_table(reference: pd.DataFrame, sample: pd.DataFrame,
 
 
 def on_manifold_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame) -> float:
-    """Fraction of (row, feature) cells inside the realistic manifold bounds.
+    """Fraction of (row, attacker-controlled feature) cells inside the manifold bounds.
+
+    Only attacker-controlled columns: the rest of an attack row is derived from a real
+    timeline or inherited from a real account, so it is plausible by construction and the
+    guardrail neither governs nor touches it.
 
     Note: when `sample` is the optimizer's OUTPUT, this is ~1.0 BY CONSTRUCTION — the
     optimizer hard-clips every candidate to exactly these bounds, so this only confirms
@@ -68,8 +72,8 @@ def on_manifold_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame) -> float
     see `frac_off_manifold_pre_clip` in each AttackBatch.provenance (optimizer.py).
     """
     lo, hi = feature_stats.loc[0.005], feature_stats.loc[0.995]
-    inside = np.ones((len(sample), len(FEATURE_COLUMNS)), dtype=bool)
-    for j, col in enumerate(FEATURE_COLUMNS):
+    inside = np.ones((len(sample), len(ATTACKER_CONTROLLED)), dtype=bool)
+    for j, col in enumerate(ATTACKER_CONTROLLED):
         inside[:, j] = (sample[col] >= lo[col] - 1e-9) & (sample[col] <= hi[col] + 1e-9)
     return float(inside.mean())
 

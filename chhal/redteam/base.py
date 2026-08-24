@@ -18,8 +18,13 @@ features from it with `chhal.behaviour.derive`, the same function used on the 59
 real transactions. `hour` and `day_of_week` come from the timestamps too. Consistency is
 not checked afterwards; it cannot be violated.
 
-Each campaign carries a short history of ordinary spend before the attack starts, which
-is what makes `amount_to_avg_ratio` mean "large for THIS account" rather than "large".
+Each campaign is mounted on a REAL, never-fraudulent account (see hosts.py), so the
+history `amount_to_avg_ratio` is measured against is that card's actual spend, and the
+issuer-side context the attacker cannot control — account age, merchant risk, and the
+dataset's anonymised entity-linkage counts — is inherited rather than invented. That is
+what let the feature space grow to include the linkage block at all: those counts carry
+most of the real-fraud signal and cannot be reconstructed, so a generated attacker could
+only have faked them.
 
 Why vectors no longer contain hand-picked numbers
 -------------------------------------------------
@@ -44,7 +49,8 @@ import numpy as np
 import pandas as pd
 
 from ..behaviour import day_of_week_of, derive, hour_of
-from ..contract import FEATURE_COLUMNS, INTEGER_FEATURES, AttackBatch
+from ..contract import (FEATURE_COLUMNS, INHERITED_FEATURES, INTEGER_FEATURES,
+                        AttackBatch)
 from .campaign import TemporalProfile, generate
 
 
@@ -84,11 +90,23 @@ class AttackVector(ABC):
 
     def __init__(self) -> None:
         self.profile: BaseProfile | None = None
+        self.hosts = None
 
-    def calibrate(self, profile: BaseProfile) -> "AttackVector":
-        """Bind this vector to the loaded population. Required before rendering."""
+    def calibrate(self, profile: BaseProfile, hosts=None) -> "AttackVector":
+        """Bind this vector to the loaded population and the accounts it may compromise."""
         self.profile = profile
+        self.hosts = hosts
         return self
+
+    @property
+    def h(self):
+        if getattr(self, "hosts", None) is None:
+            raise RuntimeError(
+                f"{type(self).__name__} has no host pool. Call "
+                f"vector.calibrate(profile, HostPool(frame)) — a campaign is mounted on a "
+                f"real account so that issuer-side features are inherited, not invented."
+            )
+        return self.hosts
 
     @property
     def p(self) -> BaseProfile:
@@ -100,26 +118,28 @@ class AttackVector(ABC):
             )
         return self.profile
 
-    # Features that belong to the compromised ACCOUNT, not to a single transaction. One
-    # card does not change country, rail or age partway through a campaign, so these are
-    # sampled once per entity and broadcast across its rows.
-    ENTITY_LEVEL = ("account_age_days", "is_cross_border", "channel_code")
+    # Choices that belong to the compromised ACCOUNT, not to a single transaction. An
+    # attacker picks a rail and a destination once; they do not change partway through a
+    # campaign. Sampled once per entity and broadcast.
+    ENTITY_LEVEL = ("is_cross_border", "channel_code")
 
     temporal: TemporalProfile = None  # each vector must declare its own
 
     @abstractmethod
     def static_features(self, n: int, rng: np.random.Generator) -> Dict[str, np.ndarray]:
-        """The columns that are not derived from the timeline, per row.
+        """The few columns the attacker actually chooses, per row.
 
-        Everything temporal (amount, hour, day_of_week, both velocities, the gap and the
-        amount ratio) is produced by the campaign and must NOT appear here.
+        Not the timeline (amount, hour, day_of_week, both velocities, the gap, the amount
+        ratio) — the campaign produces those. Not the issuer's view either (account age,
+        merchant risk, linkage counts) — the host account supplies those. What is left is
+        what a fraudster genuinely decides: the payee, the rail, the destination.
         """
 
     def render(self, n: int, rng: np.random.Generator) -> pd.DataFrame:
-        """n fraud rows, laid out as campaigns on accounts and derived from the timeline."""
+        """n fraud rows: a campaign mounted on a real account, derived from its timeline."""
         if self.temporal is None:
             raise RuntimeError(f"{type(self).__name__} declares no TemporalProfile")
-        camp = generate(self.temporal, n, self.p, rng)
+        camp = generate(self.temporal, n, self.p, rng, self.h)
         beh = derive(camp.entity, camp.timestamp_s, camp.amount)
 
         df = pd.DataFrame({
@@ -129,10 +149,19 @@ class AttackVector(ABC):
             **{c: beh[c].to_numpy() for c in beh.columns},
             **self.static_features(len(camp.amount), rng),
         })
-        for col in self.ENTITY_LEVEL:                    # one value per account
+        # issuer-side context, inherited from the host account rather than invented
+        for j, col in enumerate(INHERITED_FEATURES):
+            df[col] = camp.inherited[:, j]
+
+        for col in self.ENTITY_LEVEL:                    # one choice per account
             df[col] = df.groupby(camp.entity)[col].transform("first")
 
-        # history rows exist only to give the account a baseline; they are not attacks
+        # The card keeps ageing while the attacker holds it: the host's age was measured
+        # at its last real transaction, and the takeover happens some days after that.
+        first_ts = pd.Series(camp.timestamp_s).groupby(camp.entity).transform("min")
+        df["account_age_days"] = df["account_age_days"] + (camp.timestamp_s - first_ts) / 86_400.0
+
+        # the host's real transactions exist only to give the account a baseline
         return df[camp.is_attack].head(n).reset_index(drop=True)
 
     def batch(self, n: int, iteration: int, rng: np.random.Generator) -> AttackBatch:

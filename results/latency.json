@@ -4,215 +4,215 @@
     {
       "stage": "detector only",
       "batch": 1,
-      "p50_ms": 0.2562,
-      "p95_ms": 0.299,
-      "p99_ms": 0.3837,
-      "mean_ms": 0.2621,
-      "us_per_txn": 256.23,
-      "txns_per_sec": 3902
-    },
-    {
-      "stage": "+ anomaly arm (stacked)",
-      "batch": 1,
-      "p50_ms": 1.1443,
-      "p95_ms": 1.1937,
-      "p99_ms": 1.2309,
-      "mean_ms": 1.1479,
-      "us_per_txn": 1144.31,
-      "txns_per_sec": 873
-    },
-    {
-      "stage": "+ calibration",
-      "batch": 1,
-      "p50_ms": 0.2835,
-      "p95_ms": 0.3097,
-      "p99_ms": 0.322,
-      "mean_ms": 0.2847,
-      "us_per_txn": 283.54,
-      "txns_per_sec": 3526
-    },
-    {
-      "stage": "FULL PATH (score -> action)",
-      "batch": 1,
-      "p50_ms": 1.1761,
-      "p95_ms": 1.2196,
-      "p99_ms": 1.2401,
-      "mean_ms": 1.1787,
-      "us_per_txn": 1176.08,
-      "txns_per_sec": 850
-    },
-    {
-      "stage": "detector only",
-      "batch": 10,
-      "p50_ms": 0.2638,
-      "p95_ms": 0.2838,
-      "p99_ms": 0.2986,
-      "mean_ms": 0.2642,
-      "us_per_txn": 26.38,
-      "txns_per_sec": 37914
-    },
-    {
-      "stage": "+ anomaly arm (stacked)",
-      "batch": 10,
-      "p50_ms": 1.1696,
-      "p95_ms": 1.2819,
-      "p99_ms": 1.3209,
-      "mean_ms": 1.185,
-      "us_per_txn": 116.96,
-      "txns_per_sec": 8549
-    },
-    {
-      "stage": "+ calibration",
-      "batch": 10,
-      "p50_ms": 0.2884,
-      "p95_ms": 0.3022,
-      "p99_ms": 0.3084,
-      "mean_ms": 0.2882,
-      "us_per_txn": 28.84,
-      "txns_per_sec": 34674
-    },
-    {
-      "stage": "FULL PATH (score -> action)",
-      "batch": 10,
-      "p50_ms": 1.2138,
-      "p95_ms": 1.2807,
-      "p99_ms": 1.3095,
-      "mean_ms": 1.2195,
-      "us_per_txn": 121.38,
-      "txns_per_sec": 8238
-    },
-    {
-      "stage": "detector only",
-      "batch": 100,
-      "p50_ms": 0.3495,
-      "p95_ms": 0.3683,
+      "p50_ms": 0.2669,
+      "p95_ms": 0.3224,
       "p99_ms": 0.3864,
-      "mean_ms": 0.3505,
-      "us_per_txn": 3.5,
-      "txns_per_sec": 286123
+      "mean_ms": 0.2733,
+      "us_per_txn": 266.87,
+      "txns_per_sec": 3747
+    },
+    {
+      "stage": "+ anomaly arm (stacked)",
+      "batch": 1,
+      "p50_ms": 1.2133,
+      "p95_ms": 1.2858,
+      "p99_ms": 1.3162,
+      "mean_ms": 1.2238,
+      "us_per_txn": 1213.33,
+      "txns_per_sec": 824
+    },
+    {
+      "stage": "+ calibration",
+      "batch": 1,
+      "p50_ms": 0.289,
+      "p95_ms": 0.3174,
+      "p99_ms": 0.3278,
+      "mean_ms": 0.2905,
+      "us_per_txn": 289.02,
+      "txns_per_sec": 3459
+    },
+    {
+      "stage": "FULL PATH (score -> action)",
+      "batch": 1,
+      "p50_ms": 1.2589,
+      "p95_ms": 1.3317,
+      "p99_ms": 1.4469,
+      "mean_ms": 1.2686,
+      "us_per_txn": 1258.85,
+      "txns_per_sec": 794
+    },
+    {
+      "stage": "detector only",
+      "batch": 10,
+      "p50_ms": 0.2749,
+      "p95_ms": 0.3051,
+      "p99_ms": 0.3529,
+      "mean_ms": 0.2779,
+      "us_per_txn": 27.49,
+      "txns_per_sec": 36371
+    },
+    {
+      "stage": "+ anomaly arm (stacked)",
+      "batch": 10,
+      "p50_ms": 1.2274,
+      "p95_ms": 1.6023,
+      "p99_ms": 2.1798,
+      "mean_ms": 1.2889,
+      "us_per_txn": 122.74,
+      "txns_per_sec": 8147
+    },
+    {
+      "stage": "+ calibration",
+      "batch": 10,
+      "p50_ms": 0.2985,
+      "p95_ms": 0.3243,
+      "p99_ms": 0.3386,
+      "mean_ms": 0.3007,
+      "us_per_txn": 29.85,
+      "txns_per_sec": 33500
+    },
+    {
+      "stage": "FULL PATH (score -> action)",
+      "batch": 10,
+      "p50_ms": 1.2546,
+      "p95_ms": 1.4083,
+      "p99_ms": 1.5346,
+      "mean_ms": 1.2727,
+      "us_per_txn": 125.46,
+      "txns_per_sec": 7970
+    },
+    {
+      "stage": "detector only",
+      "batch": 100,
+      "p50_ms": 0.3809,
+      "p95_ms": 0.4054,
+      "p99_ms": 0.4244,
+      "mean_ms": 0.3835,
+      "us_per_txn": 3.81,
+      "txns_per_sec": 262567
     },
     {
       "stage": "+ anomaly arm (stacked)",
       "batch": 100,
-      "p50_ms": 2.3977,
-      "p95_ms": 2.6265,
-      "p99_ms": 2.7624,
-      "mean_ms": 2.4183,
-      "us_per_txn": 23.98,
-      "txns_per_sec": 41707
+      "p50_ms": 1.9148,
+      "p95_ms": 2.0418,
+      "p99_ms": 2.1242,
+      "mean_ms": 1.9292,
+      "us_per_txn": 19.15,
+      "txns_per_sec": 52224
     },
     {
       "stage": "+ calibration",
       "batch": 100,
-      "p50_ms": 0.3763,
-      "p95_ms": 0.4036,
-      "p99_ms": 0.4303,
-      "mean_ms": 0.3797,
-      "us_per_txn": 3.76,
-      "txns_per_sec": 265736
+      "p50_ms": 0.4084,
+      "p95_ms": 0.44,
+      "p99_ms": 0.4622,
+      "mean_ms": 0.4124,
+      "us_per_txn": 4.08,
+      "txns_per_sec": 244860
     },
     {
       "stage": "FULL PATH (score -> action)",
       "batch": 100,
-      "p50_ms": 2.476,
-      "p95_ms": 2.7421,
-      "p99_ms": 2.829,
-      "mean_ms": 2.5043,
-      "us_per_txn": 24.76,
-      "txns_per_sec": 40388
+      "p50_ms": 1.946,
+      "p95_ms": 2.1003,
+      "p99_ms": 2.2565,
+      "mean_ms": 1.96,
+      "us_per_txn": 19.46,
+      "txns_per_sec": 51387
     },
     {
       "stage": "detector only",
       "batch": 1000,
-      "p50_ms": 1.0063,
-      "p95_ms": 1.1125,
-      "p99_ms": 1.28,
-      "mean_ms": 1.0198,
+      "p50_ms": 1.35,
+      "p95_ms": 1.5368,
+      "p99_ms": 1.6848,
+      "mean_ms": 1.3418,
+      "us_per_txn": 1.35,
+      "txns_per_sec": 740763
+    },
+    {
+      "stage": "+ anomaly arm (stacked)",
+      "batch": 1000,
+      "p50_ms": 7.847,
+      "p95_ms": 8.3111,
+      "p99_ms": 8.3794,
+      "mean_ms": 7.8768,
+      "us_per_txn": 7.85,
+      "txns_per_sec": 127436
+    },
+    {
+      "stage": "+ calibration",
+      "batch": 1000,
+      "p50_ms": 1.3704,
+      "p95_ms": 1.5369,
+      "p99_ms": 1.6078,
+      "mean_ms": 1.3727,
+      "us_per_txn": 1.37,
+      "txns_per_sec": 729693
+    },
+    {
+      "stage": "FULL PATH (score -> action)",
+      "batch": 1000,
+      "p50_ms": 7.9204,
+      "p95_ms": 8.4214,
+      "p99_ms": 8.5273,
+      "mean_ms": 7.9598,
+      "us_per_txn": 7.92,
+      "txns_per_sec": 126256
+    },
+    {
+      "stage": "detector only",
+      "batch": 10000,
+      "p50_ms": 9.725,
+      "p95_ms": 9.8112,
+      "p99_ms": 9.8266,
+      "mean_ms": 9.7276,
+      "us_per_txn": 0.97,
+      "txns_per_sec": 1028277
+    },
+    {
+      "stage": "+ anomaly arm (stacked)",
+      "batch": 10000,
+      "p50_ms": 57.7793,
+      "p95_ms": 59.1543,
+      "p99_ms": 59.3088,
+      "mean_ms": 57.9576,
+      "us_per_txn": 5.78,
+      "txns_per_sec": 173072
+    },
+    {
+      "stage": "+ calibration",
+      "batch": 10000,
+      "p50_ms": 10.0601,
+      "p95_ms": 10.5728,
+      "p99_ms": 10.7792,
+      "mean_ms": 10.1204,
       "us_per_txn": 1.01,
-      "txns_per_sec": 993727
-    },
-    {
-      "stage": "+ anomaly arm (stacked)",
-      "batch": 1000,
-      "p50_ms": 9.8624,
-      "p95_ms": 10.3927,
-      "p99_ms": 10.5606,
-      "mean_ms": 9.9246,
-      "us_per_txn": 9.86,
-      "txns_per_sec": 101395
-    },
-    {
-      "stage": "+ calibration",
-      "batch": 1000,
-      "p50_ms": 1.0277,
-      "p95_ms": 1.1656,
-      "p99_ms": 1.2439,
-      "mean_ms": 1.0358,
-      "us_per_txn": 1.03,
-      "txns_per_sec": 973039
-    },
-    {
-      "stage": "FULL PATH (score -> action)",
-      "batch": 1000,
-      "p50_ms": 10.04,
-      "p95_ms": 10.5245,
-      "p99_ms": 10.7924,
-      "mean_ms": 10.086,
-      "us_per_txn": 10.04,
-      "txns_per_sec": 99601
-    },
-    {
-      "stage": "detector only",
-      "batch": 10000,
-      "p50_ms": 7.2346,
-      "p95_ms": 7.8047,
-      "p99_ms": 7.8482,
-      "mean_ms": 7.2932,
-      "us_per_txn": 0.72,
-      "txns_per_sec": 1382245
-    },
-    {
-      "stage": "+ anomaly arm (stacked)",
-      "batch": 10000,
-      "p50_ms": 71.0809,
-      "p95_ms": 73.5015,
-      "p99_ms": 74.0626,
-      "mean_ms": 71.5585,
-      "us_per_txn": 7.11,
-      "txns_per_sec": 140684
-    },
-    {
-      "stage": "+ calibration",
-      "batch": 10000,
-      "p50_ms": 7.5251,
-      "p95_ms": 8.2003,
-      "p99_ms": 8.4141,
-      "mean_ms": 7.6382,
-      "us_per_txn": 0.75,
-      "txns_per_sec": 1328881
+      "txns_per_sec": 994023
     },
     {
       "stage": "FULL PATH (score -> action)",
       "batch": 10000,
-      "p50_ms": 71.9905,
-      "p95_ms": 73.935,
-      "p99_ms": 74.0706,
-      "mean_ms": 72.3038,
-      "us_per_txn": 7.2,
-      "txns_per_sec": 138907
+      "p50_ms": 58.3621,
+      "p95_ms": 58.8879,
+      "p99_ms": 59.0216,
+      "mean_ms": 58.391,
+      "us_per_txn": 5.84,
+      "txns_per_sec": 171344
     }
   ],
   "footprint_kb": {
-    "detector_kb": 1539.5,
-    "anomaly_kb": 76573.8,
-    "calibrator_kb": 3.8,
-    "total_kb": 78117.1
+    "detector_kb": 1549.5,
+    "anomaly_kb": 32263.0,
+    "calibrator_kb": 4.6,
+    "total_kb": 33817.1
   },
   "live_single_txn": {
-    "p50_ms": 1.1761,
-    "p95_ms": 1.2196,
-    "p99_ms": 1.2401,
-    "headroom_at_p99": 40.3
+    "p50_ms": 1.2589,
+    "p95_ms": 1.3317,
+    "p99_ms": 1.4469,
+    "headroom_at_p99": 34.6
   },
-  "batch_throughput_txns_per_sec": 138907
+  "batch_throughput_txns_per_sec": 171344
 }

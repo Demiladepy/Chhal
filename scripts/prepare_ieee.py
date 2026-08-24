@@ -71,14 +71,13 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from chhal.behaviour import derive  # noqa: E402
-from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN  # noqa: E402
+from chhal.behaviour import HOUR_OFFSET, derive, hour_of  # noqa: E402
+from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN, LINKAGE_FEATURES  # noqa: E402
 
 # Expected shape of the genuine dataset — we refuse to proceed on anything else.
 EXPECTED_ROWS = 590_540
 EXPECTED_FRAUDS = 20_663
 
-HOUR_OFFSET = -5          # aligns the empirical diurnal trough to ~04:00 local
 DOMESTIC_ADDR2 = 87.0     # 88.1% of rows; everything else is cross-border
 TE_SMOOTHING = 50.0       # Bayesian prior weight for merchant-risk target encoding
 TE_FOLDS = 5
@@ -87,7 +86,13 @@ TEST_FRAC = 0.25
 RAW_COLUMNS = [
     "TransactionID", "isFraud", "TransactionDT", "TransactionAmt", "ProductCD",
     "card1", "addr1", "addr2", "R_emaildomain", "D1",
-]
+] + [f"C{i}" for i in range(1, 15)]
+
+# Helper columns kept beside the feature space, never part of it. They are what lets the
+# red team mount a campaign on a real account: which account a transaction belongs to,
+# and when it happened.
+ACCOUNT_COLUMN = "_account"
+TIME_COLUMN = "_ts"
 CHANNEL_MAP = {"W": 0, "C": 1, "R": 2, "H": 2, "S": 2}
 
 
@@ -185,7 +190,7 @@ def build(raw_dir: str, out_path: str, seed: int = 7) -> pd.DataFrame:
     raw = _load_raw(raw_dir)
     beh = _behavioural_features(raw)
 
-    hour = ((raw.TransactionDT // 3_600) + HOUR_OFFSET) % 24
+    hour = hour_of(raw.TransactionDT.to_numpy(np.int64))
     out = pd.DataFrame({
         "amount": raw.TransactionAmt.astype(np.float64),
         "hour": hour.astype(np.int64),
@@ -216,7 +221,18 @@ def build(raw_dir: str, out_path: str, seed: int = 7) -> pd.DataFrame:
         is_train, seed,
     )
 
-    out = out[FEATURE_COLUMNS + [LABEL_COLUMN, "split"]]
+    # The dataset's own anonymised entity-linkage counts, carried through unchanged.
+    # These are the columns the red team inherits rather than invents — see
+    # contract.LINKAGE_FEATURES for why, and for what happened when we tried to rebuild
+    # the signal from features we understand.
+    for i, col in enumerate(LINKAGE_FEATURES, start=1):
+        out[col] = raw[f"C{i}"].fillna(0.0).astype(np.float64)
+
+    # helper columns: which account, and when. Not features; the host pool needs them.
+    out[ACCOUNT_COLUMN] = beh["_uid"].astype(np.int64)
+    out[TIME_COLUMN] = raw.TransactionDT.astype(np.int64)
+
+    out = out[FEATURE_COLUMNS + [LABEL_COLUMN, "split", ACCOUNT_COLUMN, TIME_COLUMN]]
     if out.isna().any().any():
         raise SystemExit(f"NaNs produced in: {out.columns[out.isna().any()].tolist()}")
 
@@ -227,7 +243,12 @@ def build(raw_dir: str, out_path: str, seed: int = 7) -> pd.DataFrame:
     print(f"[split ] temporal cut at TransactionDT={int(cut_dt):,}  "
           f"train={len(tr):,} ({tr[LABEL_COLUMN].mean()*100:.3f}% fraud)  "
           f"test={len(te):,} ({te[LABEL_COLUMN].mean()*100:.3f}% fraud)")
-    print(f"[write ] {out_path}  ({os.path.getsize(out_path)/1e6:.1f} MB)")
+    n_acct = out[ACCOUNT_COLUMN].nunique()
+    clean = out.groupby(ACCOUNT_COLUMN)[LABEL_COLUMN].max()
+    print(f"[hosts ] {n_acct:,} accounts, {int((clean == 0).sum()):,} of them never "
+          f"fraudulent — those are the ones a campaign may be mounted on")
+    print(f"[write ] {out_path}  ({os.path.getsize(out_path)/1e6:.1f} MB, "
+          f"{len(FEATURE_COLUMNS)} features)")
     return out
 
 

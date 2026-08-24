@@ -26,6 +26,13 @@ BEHAVIOURAL_COLUMNS = [
 ]
 FIRST_TXN_GAP_MIN = 43_200.0   # 30 days, used when an account has no prior transaction
 
+# IEEE-CIS's TransactionDT counts seconds from an undisclosed epoch. The empirical
+# diurnal minimum sits at raw hour ~8, so this shift puts the trough near 04:00 local.
+# The *shape* is real; only the clock label is aligned. It lives here because BOTH the
+# real-data preparation and the red team's generated campaigns must use the same one —
+# they briefly did not, which silently shifted every generated hour by five hours.
+HOUR_OFFSET = -5
+
 
 def _block_starts(codes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Start index of the contiguous block each row belongs to, and the block starts."""
@@ -80,7 +87,7 @@ def derive(uid: np.ndarray, timestamp_s: np.ndarray, amount: np.ndarray) -> pd.D
     })
 
 
-def hour_of(timestamp_s: np.ndarray, offset_hours: int = 0) -> np.ndarray:
+def hour_of(timestamp_s: np.ndarray, offset_hours: int = HOUR_OFFSET) -> np.ndarray:
     return ((np.asarray(timestamp_s, dtype=np.int64) // 3_600) + offset_hours) % 24
 
 

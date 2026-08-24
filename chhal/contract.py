@@ -32,7 +32,33 @@ FEATURE_COLUMNS: List[str] = [
     "is_cross_border",        # 0/1
     "channel_code",           # 0 = card, 1 = upi, 2 = imps/rtp
     "merchant_risk",          # 0..1 issuer-side merchant risk score
-]
+] + [f"linkage_c{i}" for i in range(1, 15)]
+
+# IEEE-CIS's C1-C14: anonymised entity-linkage counts — how many addresses, devices,
+# emails and cards are associated with this card, over undisclosed windows. We do not
+# name them beyond what we can defend, because nobody outside Vesta knows exactly what
+# each one counts.
+#
+# They matter enormously and cannot be faked. On real fraud they take recall at a 0.1%
+# false-positive budget from 3.1% to 19.7% — a 6.4x lift that nothing else comes close
+# to, including all 339 V-features (which add under 2 points on top). We also tried to
+# rebuild the same signal from what we DO understand — distinct counterparties, addresses
+# and emails per account over time — and got +0.16 points, essentially nothing. Whatever
+# they aggregate over (devices, phones, IPs, cross-card linkage) is not in the columns
+# this dataset exposes. See scripts/feature_ablation.py.
+#
+# So the red team does not invent them. It inherits them, by mounting each attack
+# campaign on a REAL account whose linkage history is whatever it actually was.
+LINKAGE_FEATURES: List[str] = [f"linkage_c{i}" for i in range(1, 15)]
+
+# Features that belong to the issuer, not the transaction. An attacker who compromises a
+# card cannot set how many devices that card is associated with, nor its age, nor the
+# issuer's opinion of the merchant. The red team inherits every one of these from the
+# host account rather than sampling them.
+INHERITED_FEATURES: List[str] = [
+    "account_age_days",
+    "merchant_risk",
+] + LINKAGE_FEATURES
 
 LABEL_COLUMN = "is_fraud"
 

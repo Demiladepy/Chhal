@@ -25,12 +25,18 @@ from chhal.loop import LoopConfig, run_loop
 from chhal.optimizer import EvasionOptimizer
 from chhal.redteam import ALL_VECTORS
 from chhal.redteam.base import BaseProfile
+from chhal.redteam.hosts import HostPool
 
 SMALL = dict(source="synthetic", n_legit=4000, n_baseline_fraud=100)
 
 
 def profile_for(base) -> BaseProfile:
     return BaseProfile(base.legit_quantiles, base.legit_categoricals)
+
+
+def armed(V, base):
+    """A vector bound to the population AND to the accounts it may compromise."""
+    return V().calibrate(profile_for(base), HostPool(base.train))
 
 
 def test_attackbatch_rejects_wrong_feature_space():
@@ -48,10 +54,9 @@ def test_vector_requires_calibration():
 
 def test_all_vectors_emit_frozen_feature_space():
     base = load_base_data(seed=1, **SMALL)
-    prof = profile_for(base)
     rng = np.random.default_rng(0)
     for V in ALL_VECTORS:
-        batch = V().calibrate(prof).batch(20, 1, rng)   # .validate() runs inside .batch()
+        batch = armed(V, base).batch(20, 1, rng)        # .validate() runs inside .batch()
         assert list(batch.transactions.columns) == FEATURE_COLUMNS
         assert len(batch) == 20
         for col in INTEGER_FEATURES:
@@ -70,12 +75,11 @@ def test_calibrated_vectors_stay_inside_the_real_value_range():
     consistency property, tested in test_behaviour.py.
     """
     base = load_base_data(seed=5, **SMALL)
-    prof = profile_for(base)
     rng = np.random.default_rng(5)
     legit = base.train[base.train["is_fraud"] == 0]
     for V in ALL_VECTORS:
-        rows = V().calibrate(prof).batch(300, 0, rng).transactions
-        for col in ("amount", "account_age_days", "merchant_risk"):
+        rows = armed(V, base).batch(300, 0, rng).transactions
+        for col in ("amount",):
             assert rows[col].min() >= legit[col].min() - 1e-6, f"{V.vector_id}.{col} below observed"
             assert rows[col].max() <= legit[col].max() + 1e-6, f"{V.vector_id}.{col} above observed"
 
@@ -86,15 +90,18 @@ def test_optimizer_lowers_detector_score_and_stays_plausible():
     opt = EvasionOptimizer(base.feature_stats)
     rng = np.random.default_rng(1)
 
-    seed_batch = ALL_VECTORS[1]().calibrate(profile_for(base)).batch(200, 1, rng)  # bustout
+    seed_batch = armed(ALL_VECTORS[1], base).batch(200, 1, rng)   # bustout
     before = detector.score(seed_batch.transactions).mean()
     adapted = opt.optimize(seed_batch, detector, rng)
     after = detector.score(adapted.transactions).mean()
 
     assert after < before, "evasion optimizer should lower the detector's fraud score"
-    # plausibility guardrail: every feature stays within the manifold bounds
+    # plausibility guardrail: every ATTACKER-CONTROLLED feature stays within the manifold.
+    # The rest is inherited from a real account or derived from a real timeline, and the
+    # optimizer must leave it exactly as it found it (see test_hosts.py).
+    from chhal.contract import ATTACKER_CONTROLLED
     lo, hi = base.feature_stats.loc[0.005], base.feature_stats.loc[0.995]
-    for col in FEATURE_COLUMNS:
+    for col in ATTACKER_CONTROLLED:
         assert adapted.transactions[col].min() >= lo[col] - 1e-6
         assert adapted.transactions[col].max() <= hi[col] + 1e-6
 

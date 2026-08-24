@@ -34,6 +34,7 @@ from chhal.ensemble import AnomalyArm, Ensemble, StackedDetector    # noqa: E402
 from chhal.optimizer import EvasionOptimizer                        # noqa: E402
 from chhal.redteam import ALL_VECTORS                               # noqa: E402
 from chhal.redteam.base import BaseProfile                          # noqa: E402
+from chhal.redteam.hosts import HostPool                            # noqa: E402
 
 SEED = 7
 N_PER_VECTOR = 500
@@ -64,8 +65,10 @@ def main() -> None:
     baseline = Detector(seed=SEED).fit(base.train, LABEL_COLUMN)
     opt = EvasionOptimizer(base.feature_stats)
     adapted = {}
+    hosts = HostPool(base.test, exclude_accounts=base.train['_account'])
+    print(f"[hosts] {hosts.describe()}")
     for V in ALL_VECTORS:
-        v = V().calibrate(profile)
+        v = V().calibrate(profile, hosts)
         adapted[v.vector_id] = opt.optimize(v.batch(N_PER_VECTOR, 0, rng), baseline, rng).transactions
     ids = list(adapted)
 

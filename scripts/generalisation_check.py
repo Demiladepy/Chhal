@@ -28,6 +28,7 @@ from chhal.detector import Detector                                 # noqa: E402
 from chhal.optimizer import EvasionOptimizer                        # noqa: E402
 from chhal.redteam import ALL_VECTORS                               # noqa: E402
 from chhal.redteam.base import BaseProfile                          # noqa: E402
+from chhal.redteam.hosts import HostPool                            # noqa: E402
 
 N_PER_VECTOR = 500
 TARGET_FPR = 0.001          # 0.1% of legitimate traffic flagged
@@ -51,8 +52,12 @@ def main() -> None:
 
     # every vector, adapted once against the baseline detector
     adapted = {}
+    # These attacks are scored against test-side legitimate traffic, so they compromise
+    # TEST accounts — an evaluation attack must not carry context the detector trained on.
+    hosts = HostPool(base.test, exclude_accounts=base.train['_account'])
+    print(f"[hosts] {hosts.describe()}")
     for V in ALL_VECTORS:
-        v = V().calibrate(profile)
+        v = V().calibrate(profile, hosts)
         adapted[v.vector_id] = opt.optimize(v.batch(N_PER_VECTOR, 0, rng), baseline, rng).transactions
     ids = list(adapted)
 

@@ -39,6 +39,7 @@ from chhal.mitigation import (ACTION_NAMES, Action, ActionPolicy,         # noqa
 from chhal.optimizer import EvasionOptimizer                              # noqa: E402
 from chhal.redteam import ALL_VECTORS                                     # noqa: E402
 from chhal.redteam.base import BaseProfile                                # noqa: E402
+from chhal.redteam.hosts import HostPool                                  # noqa: E402
 
 SEED = 7
 CALIB_FRAC = 0.15          # last 15% of the training window, never fitted on
@@ -60,13 +61,20 @@ def main() -> None:
     profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
     seed_det = Detector(seed=SEED).fit(fit_df, LABEL_COLUMN)
     opt = EvasionOptimizer(base.feature_stats)
+    # Campaigns for training and calibration compromise TRAIN accounts; the ones that get
+    # scored compromise TEST accounts, so no evaluated attack carries context the detector
+    # or the calibrator has already seen.
+    train_hosts = HostPool(base.train)
+    test_hosts = HostPool(base.test, exclude_accounts=base.train['_account'])
+    print(f"[hosts] train {len(train_hosts):,} / test {len(test_hosts):,} eligible accounts")
     parts = {"train": [], "calib": [], "eval": []}
     for V in ALL_VECTORS:
-        v = V().calibrate(profile)
-        rows = opt.optimize(v.batch(N_PER_VECTOR, 0, rng), seed_det, rng).transactions
-        a, b = N_PER_VECTOR // 3, 2 * N_PER_VECTOR // 3
-        for name, sl in zip(parts, (rows.iloc[:a], rows.iloc[a:b], rows.iloc[b:])):
-            parts[name].append(sl.assign(**{LABEL_COLUMN: 1, "vector": v.vector_id}))
+        for name, pool, n in (("train", train_hosts, N_PER_VECTOR // 3),
+                              ("calib", train_hosts, N_PER_VECTOR // 3),
+                              ("eval", test_hosts, N_PER_VECTOR // 3)):
+            v = V().calibrate(profile, pool)
+            rows = opt.optimize(v.batch(n, 0, rng), seed_det, rng).transactions
+            parts[name].append(rows.assign(**{LABEL_COLUMN: 1, "vector": v.vector_id}))
     atk = {k: pd.concat(v, ignore_index=True) for k, v in parts.items()}
     print(f"[red  ] {len(atk['train']):,} train / {len(atk['calib']):,} calibrate / "
           f"{len(atk['eval']):,} evaluate (evaluate slice never seen)")

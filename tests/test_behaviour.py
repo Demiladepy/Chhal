@@ -22,6 +22,7 @@ from chhal.behaviour import (BEHAVIOURAL_COLUMNS, consistency_violations,  # noq
 from chhal.data import load_base_data                                      # noqa: E402
 from chhal.redteam import ALL_VECTORS                                      # noqa: E402
 from chhal.redteam.base import BaseProfile                                 # noqa: E402
+from chhal.redteam.hosts import HostPool                                   # noqa: E402
 
 SMALL = dict(source="synthetic", n_legit=4000, n_baseline_fraud=100, seed=1)
 
@@ -64,7 +65,8 @@ def test_every_vector_emits_physically_possible_transactions(V):
     """The regression that matters. threshold_hugging used to fail this on 100% of rows."""
     base = load_base_data(**SMALL)
     prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
-    rows = V().calibrate(prof).batch(1500, 0, np.random.default_rng(3)).transactions
+    rows = V().calibrate(prof, HostPool(base.train)).batch(
+        1500, 0, np.random.default_rng(3)).transactions
     for rule, share in consistency_violations(rows).items():
         assert share == 0.0, f"{V.vector_id} violates {rule} on {share:.1%} of rows"
 
@@ -73,16 +75,22 @@ def test_campaigns_return_exactly_the_rows_asked_for_and_no_history():
     """History transactions exist to give the account a baseline; they are not attacks."""
     base = load_base_data(**SMALL)
     prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    pool = HostPool(base.train)
     for V in ALL_VECTORS:
         for n in (17, 250):
-            assert len(V().calibrate(prof).batch(n, 0, np.random.default_rng(1))) == n
+            assert len(V().calibrate(prof, pool).batch(n, 0, np.random.default_rng(1))) == n
 
 
 def test_hour_and_day_of_week_come_from_the_timestamps():
+    """hour_of defaults to the shared HOUR_OFFSET, so real data and generated campaigns
+    read the same clock — they briefly did not, and every generated hour was five hours
+    out without anything failing."""
+    from chhal.behaviour import HOUR_OFFSET
+    assert HOUR_OFFSET == -5
     ts = np.array([0, 3_600, 90_000])
-    assert list(hour_of(ts)) == [0, 1, 1]
+    assert list(hour_of(ts)) == [19, 20, 20]                 # offset applied
+    assert list(hour_of(ts, offset_hours=0)) == [0, 1, 1]    # raw, for comparison
     assert list(day_of_week_of(ts)) == [0, 0, 1]
-    assert list(hour_of(np.array([0]), offset_hours=-5)) == [19]
 
 
 def test_consistency_checker_actually_catches_a_bad_frame():
