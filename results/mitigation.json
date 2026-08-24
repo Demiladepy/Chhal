@@ -1,0 +1,99 @@
+{
+  "data_source": "ieee",
+  "eval_rows": 149235,
+  "eval_fraud_rate": 0.0449,
+  "calibration_ece_raw": 0.0087,
+  "calibration_ece_calibrated": 0.0,
+  "detection_at_fixed_fpr": [
+    {
+      "fpr": 0.001,
+      "threshold": 0.461538,
+      "recall_real_fraud": 0.032,
+      "recall_adaptive_attacks": 0.9881,
+      "recall_all_fraud": 0.2603
+    },
+    {
+      "fpr": 0.005,
+      "threshold": 0.393651,
+      "recall_real_fraud": 0.1065,
+      "recall_adaptive_attacks": 0.9912,
+      "recall_all_fraud": 0.3178
+    },
+    {
+      "fpr": 0.01,
+      "threshold": 0.324468,
+      "recall_real_fraud": 0.1224,
+      "recall_adaptive_attacks": 0.9912,
+      "recall_all_fraud": 0.3299
+    }
+  ],
+  "cost_model": {
+    "chargeback_fee": 25.0,
+    "margin_rate": 0.2,
+    "false_decline_penalty": 35.0,
+    "stepup_fixed_cost": 2.0,
+    "stepup_abandon_rate": 0.05,
+    "stepup_catch_rate": 0.9,
+    "review_cost": 4.0,
+    "review_delay_cost": 1.0,
+    "review_accuracy": 0.95
+  },
+  "policy_config": {
+    "max_review_rate": 0.005,
+    "max_block_rate": null
+  },
+  "policies": [
+    {
+      "policy": "do nothing (allow all)",
+      "cost_per_1k_txns": 8237.78,
+      "total_cost": 1229365.47,
+      "vs_do_nothing": 0.0,
+      "loss_avoided_pct": 0.0
+    },
+    {
+      "policy": "block at score >= 0.5",
+      "cost_per_1k_txns": 5883.07,
+      "total_cost": 877960.47,
+      "vs_do_nothing": 351405.0,
+      "loss_avoided_pct": 28.58
+    },
+    {
+      "policy": "expected-cost policy",
+      "cost_per_1k_txns": 3248.11,
+      "total_cost": 484732.42,
+      "vs_do_nothing": 744633.05,
+      "loss_avoided_pct": 60.57
+    }
+  ],
+  "expected_cost_policy": {
+    "n": 149235,
+    "action_mix": {
+      "allow": 0.71734,
+      "step_up": 0.26656,
+      "review": 0.005,
+      "block": 0.0111
+    },
+    "review_rate": 0.005,
+    "block_rate_on_legit": 0.00026,
+    "fraud_touched_rate": 0.76209,
+    "fraud_blocked_rate": 0.24179,
+    "total_cost": 484732.42,
+    "cost_per_1k_txns": 3248.11
+  },
+  "naive_threshold_policy": {
+    "n": 149235,
+    "action_mix": {
+      "allow": 0.98789,
+      "step_up": 0.0,
+      "review": 0.0,
+      "block": 0.01211
+    },
+    "review_rate": 0.0,
+    "block_rate_on_legit": 0.00079,
+    "fraud_touched_rate": 0.25299,
+    "fraud_blocked_rate": 0.25299,
+    "total_cost": 877960.47,
+    "cost_per_1k_txns": 5883.07,
+    "threshold": 0.5
+  }
+}

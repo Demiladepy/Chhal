@@ -3,6 +3,17 @@
 These flow through the tabular detector and constitute the closed loop. Text/agent
 "showcase" vectors (voice clone, prompt injection) live in the write-up, not here,
 because they do not emit tabular features — see the strategy doc.
+
+Every number below is a QUANTILE of real legitimate traffic, never a raw value. A band
+of (0.35, 0.75) on `amount` means "the middle of what real cardholders actually spend";
+(0.99, 0.9995) on `velocity_1h` means "as fast as the busiest real accounts, and no
+faster". Values are drawn back through the real inverse CDF (see base.BaseProfile), so
+a seed attack is assembled out of values that genuinely occur in the population before
+the evasion optimizer adapts it at all. Change the dataset and the vectors re-scale.
+
+The bands are what separate the vectors from each other: `threshold_hugging` lives
+inside the legitimate body, `card_testing` lives in the extreme tails, and the other two
+sit in between. That separation is what the per-vector KS table then measures.
 """
 from __future__ import annotations
 
@@ -15,7 +26,13 @@ from .base import AttackVector
 class ThresholdHugging(AttackVector):
     """HERO VECTOR. LLM-tuned sequences that sit just under velocity/amount rules and
     imitate the victim's own normal behaviour. Hardest to catch — the heart of the
-    arms race. If everything else is cut, this stays."""
+    arms race. If everything else is cut, this stays.
+
+    Every band here is deliberately INSIDE the legitimate body, never in a tail. That
+    is the whole claim: this vector should be the one with the lowest KS distance from
+    real traffic, and the per-vector fidelity table is where that gets checked rather
+    than asserted.
+    """
 
     vector_id = "threshold_hugging"
     storyline = (
@@ -25,19 +42,20 @@ class ThresholdHugging(AttackVector):
     )
 
     def render(self, n, rng):
+        p = self.p
         return pd.DataFrame({
-            "amount": np.round(rng.lognormal(6.6, 0.5, n), 2),         # ordinary size
-            "hour": rng.integers(8, 22, n),                            # normal hours
+            "amount": p.band("amount", 0.35, 0.75, n, rng),                 # ordinary size
+            "hour": p.band("hour", 0.25, 0.85, n, rng),                     # active hours
             "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": rng.integers(0, 2, n),                      # under the cap
-            "velocity_24h": rng.integers(3, 8, n),                     # looks normal
-            "amount_to_avg_ratio": np.clip(rng.normal(1.05, 0.15, n), 0.5, 1.8),
-            "account_age_days": rng.gamma(3.0, 260.0, n).clip(200, 4000),
-            "time_since_last_txn_min": rng.exponential(300.0, n).clip(20, 5000),
-            "is_new_beneficiary": np.zeros(n, int),                    # known payee
+            "velocity_1h": p.band("velocity_1h", 0.80, 0.95, n, rng),       # under the cap
+            "velocity_24h": p.band("velocity_24h", 0.80, 0.95, n, rng),     # looks normal
+            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.40, 0.70, n, rng),
+            "account_age_days": p.band("account_age_days", 0.55, 0.95, n, rng),
+            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.35, 0.75, n, rng),
+            "is_new_beneficiary": np.zeros(n, int),                         # known payee
             "is_cross_border": np.zeros(n, int),
-            "channel_code": rng.choice([0, 1], n, p=[0.5, 0.5]),
-            "merchant_risk": np.clip(rng.beta(2.0, 8.0, n), 0, 1),     # low, issuer-side
+            "channel_code": p.categorical("channel_code", n, rng),          # real channel mix
+            "merchant_risk": p.band("merchant_risk", 0.10, 0.50, n, rng),   # low, issuer-side
         })
 
 
@@ -52,19 +70,26 @@ class SyntheticBustout(AttackVector):
     )
 
     def render(self, n, rng):
+        p = self.p
         return pd.DataFrame({
-            "amount": np.round(rng.lognormal(8.6, 0.6, n), 2),        # large
+            "amount": p.band("amount", 0.93, 0.995, n, rng),                # large, still real
             "hour": rng.integers(0, 24, n),
             "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": rng.integers(2, 6, n),                     # burst
-            "velocity_24h": rng.integers(15, 40, n),
-            "amount_to_avg_ratio": np.clip(rng.normal(6.0, 2.0, n), 2.0, 30.0),
-            "account_age_days": rng.uniform(120, 400, n),             # aged, then pops
-            "time_since_last_txn_min": rng.exponential(15.0, n).clip(0.5, 200),
+            "velocity_1h": p.band("velocity_1h", 0.95, 0.995, n, rng),      # burst
+            "velocity_24h": p.band("velocity_24h", 0.96, 0.999, n, rng),
+            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.95, 0.999, n, rng),
+            # "aged quietly for months" has to mean months in THIS population: the
+            # 0.75-0.93 band of real account age is 118-428 days. The naive middle of
+            # the distribution would have been 0-3 days, because real card populations
+            # are dominated by recently-first-seen cards.
+            "account_age_days": p.band("account_age_days", 0.75, 0.93, n, rng),
+            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.02, 0.20, n, rng),
             "is_new_beneficiary": np.ones(n, int),
-            "is_cross_border": (rng.random(n) < 0.3).astype(int),
-            "channel_code": rng.choice([0, 2], n, p=[0.6, 0.4]),
-            "merchant_risk": np.clip(rng.beta(3.0, 5.0, n), 0, 1),
+            # elevated vs the 0.7% legit / 2.2% fraud base rate, because cashing out
+            # abroad is this vector's point — but not so high it leaves the manifold.
+            "is_cross_border": p.bernoulli(0.10, n, rng),
+            "channel_code": p.categorical("channel_code", n, rng),
+            "merchant_risk": p.band("merchant_risk", 0.70, 0.97, n, rng),
         })
 
 
@@ -78,19 +103,20 @@ class CardTesting(AttackVector):
     )
 
     def render(self, n, rng):
+        p = self.p
         return pd.DataFrame({
-            "amount": np.round(rng.uniform(1.0, 40.0, n), 2),         # tiny probes
+            "amount": p.band("amount", 0.005, 0.06, n, rng),                # tiny probes
             "hour": rng.integers(0, 24, n),
             "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": rng.integers(5, 20, n),                    # rapid
-            "velocity_24h": rng.integers(40, 120, n),
-            "amount_to_avg_ratio": np.clip(rng.normal(0.2, 0.1, n), 0.02, 1.0),
-            "account_age_days": rng.uniform(1, 90, n),
-            "time_since_last_txn_min": rng.exponential(2.0, n).clip(0.1, 60),
+            "velocity_1h": p.band("velocity_1h", 0.98, 0.9995, n, rng),     # rapid
+            "velocity_24h": p.band("velocity_24h", 0.99, 0.9995, n, rng),
+            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.005, 0.10, n, rng),
+            "account_age_days": p.band("account_age_days", 0.0, 0.25, n, rng),
+            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.0, 0.05, n, rng),
             "is_new_beneficiary": np.ones(n, int),
-            "is_cross_border": (rng.random(n) < 0.5).astype(int),
-            "channel_code": np.zeros(n, int),                         # card
-            "merchant_risk": np.clip(rng.beta(3.0, 4.0, n), 0, 1),
+            "is_cross_border": p.bernoulli(0.08, n, rng),
+            "channel_code": np.zeros(n, int),                               # card rail
+            "merchant_risk": p.band("merchant_risk", 0.50, 0.90, n, rng),
         })
 
 
@@ -105,19 +131,20 @@ class UpiCollectScam(AttackVector):
     )
 
     def render(self, n, rng):
+        p = self.p
         return pd.DataFrame({
-            "amount": np.round(rng.lognormal(7.4, 0.7, n), 2),
-            "hour": rng.integers(9, 23, n),
+            "amount": p.band("amount", 0.75, 0.96, n, rng),
+            "hour": p.band("hour", 0.30, 0.90, n, rng),                     # victim awake
             "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": rng.integers(1, 4, n),
-            "velocity_24h": rng.integers(2, 10, n),
-            "amount_to_avg_ratio": np.clip(rng.normal(2.5, 1.0, n), 0.5, 12.0),
-            "account_age_days": rng.uniform(30, 900, n),
-            "time_since_last_txn_min": rng.exponential(8.0, n).clip(0.5, 120),
+            "velocity_1h": p.band("velocity_1h", 0.85, 0.97, n, rng),
+            "velocity_24h": p.band("velocity_24h", 0.85, 0.97, n, rng),
+            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.85, 0.98, n, rng),
+            "account_age_days": p.band("account_age_days", 0.20, 0.80, n, rng),
+            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.01, 0.15, n, rng),
             "is_new_beneficiary": np.ones(n, int),
             "is_cross_border": np.zeros(n, int),
-            "channel_code": np.ones(n, int),                          # upi
-            "merchant_risk": np.clip(rng.beta(2.5, 6.0, n), 0, 1),
+            "channel_code": np.ones(n, int),                                # upi rail
+            "merchant_risk": p.band("merchant_risk", 0.40, 0.80, n, rng),
         })
 
 

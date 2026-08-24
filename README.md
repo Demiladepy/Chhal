@@ -63,11 +63,17 @@ python -m venv .venv
 .venv\Scripts\activate           # Windows  (source .venv/bin/activate on macOS/Linux)
 pip install -r requirements.txt
 
+python scripts/prepare_ieee.py        # ONCE: real IEEE-CIS transactions -> derived features
+                                      # (skip it and everything falls back to synthetic)
+
 python scripts/run_loop.py --fast     # ~1 min smoke run (4 iterations)
-python scripts/run_loop.py            # full 8-iteration run -> results/
+python scripts/run_loop.py            # full 8-iteration run -> results/  (~85s on real data)
+
+python scripts/generalisation_check.py  # leave-one-vector-out: recall on an UNSEEN family
+python scripts/mitigation_report.py     # score -> action -> money
 
 streamlit run dashboard/app.py        # the 3-panel live demo (replays results/)
-python -m pytest tests/ -q            # contract + optimizer + loop + fidelity smoke tests
+python -m pytest tests/ -q            # contract, optimizer, loop, fidelity, mitigation
 ```
 
 The dashboard **replays precomputed results** — it never trains live, so it can't stall
@@ -141,29 +147,130 @@ A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py))
 `results/fidelity.png` overlays the mimicry vector on legitimate traffic. Base data is
 generated; swap in real PaySim / IEEE-CIS and every number becomes a real-data report.
 
+## Mitigation — detect, flag, **and mitigate**
+
+Detection stops at a probability. `score >= 0.5` is not a mitigation, and no payments
+system is tuned that way. [`chhal/mitigation.py`](chhal/mitigation.py) picks, per
+transaction, the action with the lowest **expected cost**:
+
+| action | when it is fraud | when it is a real customer |
+|---|---|---|
+| `allow` | you eat the amount + chargeback fee | free |
+| `step_up` | 90% cannot complete the OTP | small fee, 5% abandon the purchase |
+| `review` | analyst catches 95% | analyst catches 95%, costs minutes and delay |
+| `block` | no loss | lost margin **and** lasting goodwill |
+
+Two things follow, and both are the point. The decision becomes **amount-aware** for
+free — at p=0.30 a $5 transaction prices into a cheap OTP challenge (expected cost 3.56
+vs 9.00 to allow) while a $5,000 one prices into analyst review (116.60 vs 188.37 to
+challenge) — which no single global threshold can express. And the review queue is
+rationed to a **capacity cap**, because a policy that routes 8% of traffic to analysts
+is not deployable however good its economics look.
+
+It only works on **calibrated** probabilities. A raw gradient-boosting score is not
+P(fraud), and this pool has attacks injected so its implied base rate is not the
+deployment base rate either. An isotonic calibrator is fitted on a temporal slice of the
+training window the detector never sees (ECE 0.0087 → 0.0000). `test_miscalibrated_scores_degrade_the_policy`
+locks this in: squash the scores monotonically — leaving every recall and AUC number
+identical — and the policy measurably loses money.
+
+```bash
+python scripts/mitigation_report.py
+```
+
+Priced on the frozen future (147,635 real transactions + 1,600 adaptive attacks the
+detector never saw, 4.49% fraud):
+
+| policy | cost per 1k txns | loss avoided |
+|---|---|---|
+| do nothing | $8,237.78 | — |
+| block at `score >= 0.5` | $5,883.07 | 28.6% |
+| **expected-cost policy** | **$3,248.11** | **60.6%** |
+
+It declines **0.026%** of real customers outright, against 0.079% for the fixed
+threshold, while stopping or challenging 76.2% of all fraud — because most of the work
+is done by cheap OTP challenges (26.7% of traffic) rather than declines (1.1%).
+
+### An honest split we are not hiding
+
+Recall at 0.1% false positives on real legitimate traffic, by segment:
+
+| segment | recall |
+|---|---|
+| unseen adaptive attacks (our red team) | **98.8%** |
+| real IEEE-CIS fraud | **3.2%** |
+
+The loop beats its own red team and barely detects ordinary card fraud. That is a
+feature-space limit, not a modelling one: twelve hand-derived features were chosen to
+carry the *attack* narrative, where IEEE-CIS leaderboard entries use several hundred
+engineered ones. Reporting the blended 26.0% would hide both halves. The mitigation
+layer is what partially rescues it — 68.8% of real fraud still gets stopped or
+challenged, because a cheap OTP is worth issuing on a weak signal even when an outright
+decline is not.
+
 ## Repository layout
 
 ```
 chhal/
   contract.py      # AttackBatch, ScoreReport, FEATURE_COLUMNS — the frozen interface
-  data.py          # base distribution (swap in PaySim / IEEE-CIS here); frozen train/test
+  data.py          # real IEEE-CIS base population (synthetic fallback); temporal split
   detector.py      # LightGBM blue-team detector (gain-based feature importance)
-  redteam/         # the four live-loop attack vectors
+  redteam/         # the four live-loop attack vectors, calibrated to the real population
   optimizer.py     # constrained evasion optimizer (the novel core)
   evaluation.py    # held-out split protocol + metrics
   fidelity.py      # KS-tests + on-manifold rate — fidelity as a metric, not a claim
+  mitigation.py    # calibration + expected-cost action policy — the "mitigate" pillar
   loop.py          # orchestration -> the arms-race curve
-scripts/run_loop.py    # run the loop, write results/
-dashboard/app.py       # 3-panel Streamlit demo (replays results/)
-tests/                 # contract + optimizer + loop + fidelity smoke tests
+scripts/prepare_ieee.py          # one-time: raw IEEE-CIS -> derived FEATURE_COLUMNS
+scripts/run_loop.py              # run the loop, write results/
+scripts/generalisation_check.py  # leave-one-vector-out recall on an unseen attack family
+scripts/mitigation_report.py     # calibrate, decide, price the policies
+dashboard/app.py                 # 3-panel Streamlit demo (replays results/)
+tests/                           # contract, optimizer, loop, fidelity, mitigation
 ```
 
-## Data
+## Data — real, not invented
 
-The base distribution is generated programmatically so the repo runs with one command and
-is fully reproducible. [`chhal/data.py`](chhal/data.py) is a single swappable
-function — point `load_base_data` at real **PaySim** or **IEEE-CIS** features and nothing
-downstream changes, because everything downstream only knows `FEATURE_COLUMNS`.
+Every headline number is measured on **IEEE-CIS Fraud Detection** (Vesta Corporation):
+**590,540 real card transactions over 182 days, 20,663 frauds (3.499%)**. Fidelity of
+simulation is a judged criterion and it is judged against real payment data — a distance
+measured against a distribution we invented ourselves would prove nothing.
+
+```bash
+python scripts/prepare_ieee.py     # downloads the real transactions, derives FEATURE_COLUMNS
+```
+
+[`scripts/prepare_ieee.py`](scripts/prepare_ieee.py) derives all twelve features from raw
+IEEE-CIS: velocity, recency and amount-to-average are computed **within a reconstructed
+account** (`card1 + addr1 + first-seen-day`, the community-standard uid) over the real time
+ordering, using only transactions strictly before the row they describe. `account_age_days`
+is the dataset's own `D1`; `is_cross_border` is `addr2 != 87`; `merchant_risk` is a smoothed
+historical fraud rate fit **out-of-fold on the training split only**. Every approximation is
+documented in that file's header.
+
+The split is **temporal** — the first 75% of the window trains, the last 25% tests. A random
+split leaks future fraud patterns backwards and inflates every metric. The plausibility
+manifold used by the evasion optimizer is computed on **train only**.
+
+### The synthetic fallback, and why it is not the default
+
+`load_base_data(source="synthetic")` keeps the original programmatic distribution so the repo
+still runs end to end with no download. It should never be quoted, and measuring it against
+real data shows why:
+
+| feature | real IEEE-CIS (p50) | synthetic (p50) |
+|---|---|---|
+| `amount` | 68.50 | 892.28 |
+| `velocity_24h` | 0 | 6 |
+| `time_since_last_txn_min` | 22,966 | 166 |
+| `account_age_days` | 3 | 694 |
+
+The synthetic distribution claimed the median account transacts six times a day where the
+real median transacts zero. Worse, its synthetic *fraud* multiplied amount by 2.5-6x,
+inventing a separation that does not exist: in real data fraud averages 149.2 against
+legitimate 134.5. Detection looked far easier than it is.
+
+Runs record which population they used in `results/summary.json` under `data_source`.
 
 ## Team
 

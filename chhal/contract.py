@@ -50,6 +50,18 @@ ATTACKER_CONTROLLED: List[str] = [
     "is_cross_border",
 ]
 
+# Features that must hold whole numbers wherever they are produced or perturbed.
+# Shared by the red team's sampler and the evasion optimizer so the two cannot drift.
+INTEGER_FEATURES: List[str] = [
+    "hour",
+    "day_of_week",
+    "velocity_1h",
+    "velocity_24h",
+    "is_new_beneficiary",
+    "is_cross_border",
+    "channel_code",
+]
+
 CHANNELS = {"card": 0, "upi": 1, "imps": 2}
 
 

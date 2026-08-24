@@ -1,40 +1,120 @@
-"""Base transaction distribution.
+"""Base transaction distribution — real by default, synthetic as a fallback.
 
-We generate a PaySim/UPI-flavoured base distribution programmatically so the whole
-repo is self-contained and reproducible with one command. It is deliberately written
-as a single swappable function: point `load_base_data` at real PaySim / IEEE-CIS
-features instead and nothing downstream changes, because everything downstream only
-knows FEATURE_COLUMNS.
+Two sources, one interface
+--------------------------
+`"ieee"`      590,540 REAL card transactions (Vesta / IEEE-CIS, 3.499% fraud, 182
+              days), derived into FEATURE_COLUMNS by `scripts/prepare_ieee.py`. This
+              is what every headline number should be quoted from: "fidelity of
+              simulation" is judged against real payment data, and a distance measured
+              against a distribution we invented ourselves proves nothing.
+`"synthetic"` The original programmatic distribution. Kept so the repo still runs end
+              to end with no download, and so tests stay fast — never for headline
+              numbers. It is measurably wrong: against real traffic its median amount
+              is 13x too high, its median account does 6 transactions a day where the
+              real median does 0, and its median inter-transaction gap is 138x too
+              short. Worse, its synthetic fraud multiplies amount by 2.5-6x, inventing
+              a separation that does not exist in real data (real fraud mean 149.2 vs
+              legit 134.5) and making detection look far easier than it is.
 
-The train/test split is FROZEN here, before any attack is ever injected. That freeze
-is what lets us make a no-leakage claim in the write-up.
+Two things are computed here that the rest of the loop depends on:
+
+`feature_stats`     coarse quantiles used by the evasion optimizer as the plausibility
+                    manifold. Computed on TRAIN ONLY — deriving them from train+test
+                    would let the optimizer's guardrail see the future.
+`legit_quantiles`   a fine quantile grid over LEGITIMATE TRAIN traffic only. The red
+                    team samples every continuous feature through this grid's inverse
+                    CDF, so attack values are drawn from the shape of real traffic
+                    rather than from hand-picked constants, and the vectors port to any
+                    dataset without rescaling.
+
+The split is TEMPORAL for real data (train on the past, test on the future). A random
+split leaks future fraud patterns backwards and inflates every metric.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
 
 from .contract import FEATURE_COLUMNS, LABEL_COLUMN
 
+DEFAULT_IEEE_PARQUET = os.environ.get(
+    "CHHAL_IEEE_PARQUET", os.path.expanduser("~/chhal-data/ieee_base.parquet")
+)
+
+MANIFOLD_QUANTILES = [0.005, 0.05, 0.5, 0.95, 0.995]
+GRID = np.round(np.linspace(0.0, 1.0, 1001), 5)   # inverse-CDF grid for the red team
+CATEGORICAL_FEATURES = ["channel_code"]
+
 
 @dataclass
 class BaseData:
-    train: pd.DataFrame          # legit + a little baseline (non-GenAI) fraud
-    test: pd.DataFrame           # frozen hold-out (legit + baseline fraud); filter to
-                                  # is_fraud==0 for legit-only FP measurement
-    feature_stats: pd.DataFrame  # per-feature quantiles of the realistic manifold
+    train: pd.DataFrame           # legit + fraud, the past
+    test: pd.DataFrame            # frozen hold-out, the future; filter is_fraud==0 for FP
+    feature_stats: pd.DataFrame   # coarse manifold quantiles, TRAIN only
+    legit_quantiles: pd.DataFrame # fine quantile grid over legit TRAIN traffic
+    legit_categoricals: Dict[str, Tuple[np.ndarray, np.ndarray]] = field(default_factory=dict)
+    source: str = "synthetic"
+
+    def describe(self) -> str:
+        return (f"source={self.source} train={len(self.train):,} "
+                f"({self.train[LABEL_COLUMN].mean()*100:.3f}% fraud) "
+                f"test={len(self.test):,} "
+                f"({self.test[LABEL_COLUMN].mean()*100:.3f}% fraud)")
 
 
+# ---------------------------------------------------------------------------
+# shared: derive the manifold + the red team's sampling grid from a TRAIN frame
+# ---------------------------------------------------------------------------
+def _profile_from_train(train: pd.DataFrame) -> tuple:
+    legit = train[train[LABEL_COLUMN] == 0]
+    feature_stats = train[FEATURE_COLUMNS].quantile(MANIFOLD_QUANTILES)
+    legit_quantiles = legit[FEATURE_COLUMNS].quantile(GRID)
+    cats = {}
+    for col in CATEGORICAL_FEATURES:
+        vc = legit[col].value_counts(normalize=True).sort_index()
+        cats[col] = (vc.index.to_numpy(float), vc.to_numpy(float))
+    return feature_stats, legit_quantiles, cats
+
+
+# ---------------------------------------------------------------------------
+# source: real IEEE-CIS
+# ---------------------------------------------------------------------------
+def _load_ieee(path: str, seed: int, max_rows: int | None) -> BaseData:
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"{path} not found. Build it once with:\n"
+            f"    python scripts/prepare_ieee.py\n"
+            f"(downloads the real IEEE-CIS transactions, ~683MB, then derives "
+            f"FEATURE_COLUMNS in a few seconds)."
+        )
+    df = pd.read_parquet(path)
+    train = df[df["split"] == "train"].drop(columns=["split"]).reset_index(drop=True)
+    test = df[df["split"] == "test"].drop(columns=["split"]).reset_index(drop=True)
+    if max_rows:   # stratified subsample for fast iteration; never for headline numbers
+        rng = np.random.default_rng(seed)
+        def sub(d, n):
+            if len(d) <= n:
+                return d
+            keep = rng.choice(len(d), n, replace=False)
+            return d.iloc[np.sort(keep)].reset_index(drop=True)
+        train, test = sub(train, max_rows), sub(test, max_rows // 3)
+    fs, lq, cats = _profile_from_train(train)
+    return BaseData(train, test, fs, lq, cats, source="ieee")
+
+
+# ---------------------------------------------------------------------------
+# source: synthetic fallback (unchanged behaviour, kept for offline runs and tests)
+# ---------------------------------------------------------------------------
 def _sample_legit(n: int, rng: np.random.Generator) -> pd.DataFrame:
-    """A believable spread of legitimate payment behaviour."""
     channel = rng.choice([0, 1, 2], size=n, p=[0.45, 0.45, 0.10])
-    # UPI skews small, card mid, imps larger
     base_amt = np.where(channel == 1, rng.lognormal(6.0, 0.9, n),
                 np.where(channel == 0, rng.lognormal(7.2, 0.8, n),
                                        rng.lognormal(8.4, 0.7, n)))
-    df = pd.DataFrame({
+    return pd.DataFrame({
         "amount": np.round(base_amt, 2),
         "hour": rng.integers(0, 24, n),
         "day_of_week": rng.integers(0, 7, n),
@@ -49,13 +129,10 @@ def _sample_legit(n: int, rng: np.random.Generator) -> pd.DataFrame:
         "merchant_risk": np.clip(rng.beta(2.0, 8.0, n), 0, 1),
         LABEL_COLUMN: 0,
     })
-    return df
 
 
 def _sample_baseline_fraud(n: int, rng: np.random.Generator) -> pd.DataFrame:
-    """Ordinary, non-GenAI fraud so the baseline detector is not starting from zero."""
     df = _sample_legit(n, rng)
-    # crude classic fraud: bigger amounts, odd hours, new beneficiaries, more velocity
     df["amount"] = np.round(df["amount"] * rng.uniform(2.5, 6.0, n), 2)
     df["hour"] = rng.choice(list(range(0, 5)) + list(range(22, 24)), n)
     df["is_new_beneficiary"] = 1
@@ -66,24 +143,41 @@ def _sample_baseline_fraud(n: int, rng: np.random.Generator) -> pd.DataFrame:
     return df
 
 
+def _load_synthetic(n_legit: int, n_baseline_fraud: int, test_frac: float,
+                    seed: int) -> BaseData:
+    rng = np.random.default_rng(seed)
+    full = pd.concat([_sample_legit(n_legit, rng),
+                      _sample_baseline_fraud(n_baseline_fraud, rng)], ignore_index=True)
+    full = full.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    cut = int(len(full) * (1 - test_frac))
+    train, test = full.iloc[:cut].copy(), full.iloc[cut:].copy()
+    fs, lq, cats = _profile_from_train(train)
+    return BaseData(train, test, fs, lq, cats, source="synthetic")
+
+
+# ---------------------------------------------------------------------------
 def load_base_data(
+    source: str = "auto",
     n_legit: int = 40_000,
     n_baseline_fraud: int = 800,
     test_frac: float = 0.25,
     seed: int = 7,
+    ieee_path: str | None = None,
+    max_rows: int | None = None,
 ) -> BaseData:
-    rng = np.random.default_rng(seed)
-    legit = _sample_legit(n_legit, rng)
-    fraud = _sample_baseline_fraud(n_baseline_fraud, rng)
-    full = pd.concat([legit, fraud], ignore_index=True)
-    full = full.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    """Load the base population.
 
-    cut = int(len(full) * (1 - test_frac))
-    train, test = full.iloc[:cut].copy(), full.iloc[cut:].copy()
-
-    # realistic manifold = quantiles of the whole base population, used by the
-    # evasion optimizer's plausibility guardrail.
-    qs = [0.005, 0.05, 0.5, 0.95, 0.995]
-    feature_stats = full[FEATURE_COLUMNS].quantile(qs)
-
-    return BaseData(train=train, test=test, feature_stats=feature_stats)
+    source="auto" uses real IEEE-CIS when the prepared parquet exists and falls back to
+    synthetic otherwise. Callers that must be unambiguous (anything producing a number
+    for the write-up) should pass source explicitly. `n_legit`, `n_baseline_fraud` and
+    `test_frac` apply to the synthetic source only — the real split is temporal and
+    baked into the parquet by scripts/prepare_ieee.py.
+    """
+    path = ieee_path or DEFAULT_IEEE_PARQUET
+    if source == "auto":
+        source = "ieee" if os.path.exists(path) else "synthetic"
+    if source == "ieee":
+        return _load_ieee(path, seed, max_rows)
+    if source == "synthetic":
+        return _load_synthetic(n_legit, n_baseline_fraud, test_frac, seed)
+    raise ValueError(f"unknown source {source!r}; expected 'ieee', 'synthetic' or 'auto'")

@@ -23,9 +23,12 @@ them honestly:
      catch), while overt vectors (`bustout`, `card_testing`) sit further out by design. Low
      KS on the mimicry vector is a quantified proof the mimicry is real.
 
-Note: our base distribution is generated (see data.py). Point `load_base_data` at real
-PaySim / IEEE-CIS features and every number here becomes a real-data fidelity report —
-nothing changes, because it only knows FEATURE_COLUMNS.
+Note: these numbers are now measured against REAL payment data by default — 590,540
+IEEE-CIS card transactions (Vesta), 3.499% fraud, over 182 days, with a temporal split.
+See data.py. The KS distances below are therefore distances from real legitimate
+traffic, not from a distribution we invented. Runs against the synthetic fallback are
+labelled `data_source: "synthetic"` in results/summary.json and must not be quoted as
+fidelity evidence.
 """
 from __future__ import annotations
 

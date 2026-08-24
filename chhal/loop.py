@@ -37,6 +37,7 @@ from .evaluation import evaluate, split_attacks
 from .fidelity import fidelity_report
 from .optimizer import EvasionOptimizer
 from .redteam import ALL_VECTORS
+from .redteam.base import BaseProfile
 
 
 @dataclass
@@ -66,10 +67,15 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     cfg = cfg or LoopConfig()
     rng = np.random.default_rng(cfg.seed)
     base = base or load_base_data(seed=cfg.seed)
+    print(f"[data] {base.describe()}")
 
     detector = Detector(seed=cfg.seed).fit(base.train, LABEL_COLUMN)
     optimizer = EvasionOptimizer(base.feature_stats)
-    vectors = [V() for V in ALL_VECTORS]
+    # Bind every vector to THIS population before it renders anything. A vector has
+    # no absolute scale of its own — it describes where in legitimate traffic it sits,
+    # so it must be told what legitimate traffic looks like here.
+    profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    vectors = [V().calibrate(profile) for V in ALL_VECTORS]
     legit_eval = base.test[base.test[LABEL_COLUMN] == 0]
 
     # -- build the FIXED adversarial benchmark once, against the baseline detector ----
@@ -156,5 +162,6 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
         fidelity_legit=legit_pop.sample(
             min(6000, len(legit_pop)), random_state=cfg.seed).reset_index(drop=True),
         fidelity_mimic=mimic_attacks.reset_index(drop=True),
-        config=asdict(cfg),
+        config={**asdict(cfg), "data_source": base.source,
+                "train_rows": len(base.train), "test_rows": len(base.test)},
     )

@@ -51,6 +51,12 @@ def main() -> None:
 
     bench = result.curve[result.curve["phase"] == "benchmark"]
     summary = {
+        # Which population every number below was measured on. Quoted numbers are
+        # meaningless without it: "synthetic" means we measured against a distribution
+        # we invented, "ieee" means 590,540 real card transactions.
+        "data_source": result.config["data_source"],
+        "train_rows": result.config["train_rows"],
+        "test_rows": result.config["test_rows"],
         "baseline_benchmark_f1": round(float(bench["f1"].iloc[0]), 4),
         "baseline_benchmark_recall": round(float(bench["recall"].iloc[0]), 4),
         "final_benchmark_f1": round(float(bench["f1"].iloc[-1]), 4),

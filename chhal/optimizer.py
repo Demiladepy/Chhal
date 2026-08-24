@@ -22,7 +22,8 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from .contract import ATTACKER_CONTROLLED, FEATURE_COLUMNS, AttackBatch
+from .contract import (ATTACKER_CONTROLLED, FEATURE_COLUMNS,
+                       INTEGER_FEATURES, AttackBatch)
 from .detector import Detector
 
 
@@ -39,12 +40,20 @@ class EvasionOptimizer:
     def __init__(self, feature_stats: pd.DataFrame, cfg: OptimizerConfig | None = None):
         self.cfg = cfg or OptimizerConfig()
         # realistic manifold bounds from the base population
-        self.lo = feature_stats.loc[0.005]
-        self.hi = feature_stats.loc[0.995]
-        self._int_features = {
-            "hour", "day_of_week", "velocity_1h", "velocity_24h",
-            "is_new_beneficiary", "is_cross_border", "channel_code",
-        }
+        self.lo = feature_stats.loc[0.005].copy()
+        self.hi = feature_stats.loc[0.995].copy()
+        self._int_features = set(INTEGER_FEATURES)
+
+        # Integer features are rounded at the end of _clip_to_manifold, and rounding can
+        # walk a value straight back out of the manifold: a q99.5 ceiling of 3.63 on
+        # velocity_1h becomes 4 after rounding, which is off-manifold by construction.
+        # So pull the bounds INWARD to the nearest whole numbers first — then any value
+        # inside them is still inside them after rounding. (Skipped in the degenerate
+        # case where no whole number fits between the bounds.)
+        for col in self._int_features:
+            lo_i, hi_i = np.ceil(self.lo[col]), np.floor(self.hi[col])
+            if lo_i <= hi_i:
+                self.lo[col], self.hi[col] = lo_i, hi_i
 
     # -- constraints ---------------------------------------------------------
     def _clip_to_manifold(self, df: pd.DataFrame) -> pd.DataFrame:
