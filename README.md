@@ -59,18 +59,18 @@ Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~85s):
 
 | metric | baseline | after the loop |
 |---|---|---|
-| recall @ **0.1%** of legit flagged | 0.00% | **99.65%** |
-| recall @ 0.5% | 0.00% | 99.70% |
-| recall @ 1.0% | 0.00% | 99.80% |
-| **PR AUC** | 0.0071 | **0.9980** |
-| alert rate (share of all traffic) | 0.10% | 1.478% |
+| recall @ **0.1%** of legit flagged | 0.00% | **98.90%** |
+| recall @ 0.5% | 0.00% | 98.95% |
+| recall @ 1.0% | 0.00% | 99.10% |
+| **PR AUC** | 0.0072 | **0.9923** |
+| alert rate (share of all traffic) | 0.10% | 1.467% |
 
-For comparison, the naive 0.5 cutoff on the same run: F1 0.0 → 0.9679, ROC AUC 0.9999, FP on
-legit 0.09%. The ROC number is the one to distrust.
+For comparison, the naive 0.5 cutoff on the same run: F1 0.0 → 0.9656, ROC AUC 0.9987, FP on
+legit 0.08%. The ROC number is the one to distrust.
 
 The baseline catching **zero** is not a broken detector — the benchmark attacks were
 optimised specifically to evade it, which is the optimizer doing its job. The claim that
-survives scrutiny is not this curve but the leave-one-out one: **89.6% on an attack family
+survives scrutiny is not this curve but the leave-one-out one: **88.7% on an attack family
 never seen in any form** (`scripts/generalisation_check.py`). Numbers vary by seed.
 
 ---
@@ -95,6 +95,7 @@ python scripts/run_loop.py            # full 8-iteration run -> results/  (~85s 
 python scripts/generalisation_check.py  # leave-one-vector-out: recall on an UNSEEN family
 python scripts/mitigation_report.py     # score -> action -> money
 python scripts/ensemble_check.py        # does a second detector arm earn its place?
+python scripts/latency_check.py         # can it run inside an authorization?
 
 streamlit run dashboard/app.py        # the 3-panel live demo (replays results/)
 python -m pytest tests/ -q            # contract, optimizer, loop, fidelity, mitigation
@@ -127,12 +128,15 @@ Two tracks, kept explicitly separate (fudging this loses feasibility points):
 
 **★ Live-loop vectors** (emit transaction features, flow through the detector, *are* the loop):
 
-| Vector | Idea |
-|---|---|
-| `threshold_hugging` **(hero)** | LLM-tuned sequences that sit just under every velocity/amount rule and mimic the victim's normal behaviour — the hardest to catch, the heart of the arms race |
-| `bustout` | GenAI synthetic identity ages a clean account, then busts out in a burst |
-| `card_testing` | Agentic BIN/card probing sized to stay under velocity limits |
-| `upi_collect` | 🇮🇳 fraudulent UPI collect-request + rapid drain (India rail) |
+| Vector | Idea | Campaign shape |
+|---|---|---|
+| `threshold_hugging` **(hero)** | LLM-tuned sequences that sit just under every velocity/amount rule and mimic the victim's normal behaviour — the hardest to catch, the heart of the arms race | 3-9 txns, 1h-2d apart, spend equal to the account's own normal |
+| `bustout` | GenAI synthetic identity ages a clean account, then busts out in a burst | quiet for days, then 8-25 txns minutes apart, amounts escalating 1.6× |
+| `card_testing` | Agentic BIN/card probing sized to stay under velocity limits | 20-60 micro-probes, 2s-2min apart, on a card with no history |
+| `upi_collect` | 🇮🇳 fraudulent UPI collect-request + rapid drain (India rail) | 3-7 hops, 30s-10min apart, each smaller as funds run out |
+
+Campaign shapes are not decoration — they are how the behavioural features are produced.
+See [Attacks are campaigns, not rows](#attacks-are-campaigns-not-rows).
 
 **◆ Showcase vectors** (text/agent/media — voice clone, prompt-injection against payment
 agents): scored in the write-up for breadth and demoed qualitatively. They do **not** emit
@@ -207,13 +211,13 @@ detector never saw, 4.49% fraud):
 
 | policy | cost per 1k txns | loss avoided |
 |---|---|---|
-| do nothing | $8,237.78 | — |
-| block at `score >= 0.5` | $5,883.07 | 28.6% |
-| **expected-cost policy** | **$3,248.11** | **60.6%** |
+| do nothing | $8,372.50 | — |
+| block at `score >= 0.5` | $5,938.46 | 29.1% |
+| **expected-cost policy** | **$3,155.72** | **62.3%** |
 
-It declines **0.026%** of real customers outright, against 0.079% for the fixed
-threshold, while stopping or challenging 76.2% of all fraud — because most of the work
-is done by cheap OTP challenges (26.7% of traffic) rather than declines (1.1%).
+It declines **0.031%** of real customers outright, against 0.086% for the fixed
+threshold, while stopping or challenging 76.5% of all fraud — because most of the work
+is done by cheap OTP challenges (26.8% of traffic) rather than declines (1.1%).
 
 ### An honest split we are not hiding
 
@@ -222,13 +226,13 @@ Recall at 0.1% false positives on real legitimate traffic, by segment:
 | segment | recall |
 |---|---|
 | unseen adaptive attacks (our red team) | **98.8%** |
-| real IEEE-CIS fraud | **3.2%** |
+| real IEEE-CIS fraud | **3.6%** |
 
 The loop beats its own red team and barely detects ordinary card fraud. That is a
 feature-space limit, not a modelling one: twelve hand-derived features were chosen to
 carry the *attack* narrative, where IEEE-CIS leaderboard entries use several hundred
 engineered ones. Reporting the blended 26.0% would hide both halves. The mitigation
-layer is what partially rescues it — 68.8% of real fraud still gets stopped or
+layer is what partially rescues it — 69.3% of real fraud still gets stopped or
 challenged, because a cheap OTP is worth issuing on a weak signal even when an outright
 decline is not.
 
@@ -244,15 +248,16 @@ false-positive budget:
 
 | variant | unseen attack family | real IEEE-CIS fraud |
 |---|---|---|
-| supervised only | 0.8945 | 0.0270 |
-| **max fusion** (either arm flags) | **0.8870** ✗ | **0.0192** ✗ |
-| **stacked** (anomaly score as a feature) | **0.9050** ✓ | 0.0274 |
+| supervised only | 0.8855 | 0.0296 |
+| **max fusion** (either arm flags) | **0.8735** ✗ | **0.0200** ✗ |
+| **stacked** (anomaly score as a feature) | **0.8980** ✓ | 0.0287 |
 
-**The anomaly arm alone scores 0.001 on unseen attacks and 0.000 on real fraud.** Fusing
+**The anomaly arm alone scores 0.002 on unseen attacks and 0.000 on real fraud.** Fusing
 it by `max` is actively worse than not having it — it spends part of the false-positive
-budget on an arm that carries 0.1% of the catches. Only stacking its score as an input
-*feature* helps, +1.05 points on an unseen family, and almost all of that is one vector
-(`bustout`, 0.750 → 0.802).
+budget on an arm that carries 0.2% of the catches. Only stacking its score as an input
+*feature* helps, +1.25 points on an unseen family. It also costs 76.5MB of the 78MB total
+model footprint and takes single-transaction latency from 0.26ms to 1.18ms, so whether
++1.25 points is worth it is a real decision, not an obvious one.
 
 The reason is our own doing, and it is the interesting part. Attack rows are drawn
 through the inverse CDF of real legitimate traffic and then clipped to the plausibility
@@ -265,6 +270,70 @@ contribute.** `test_anomaly_arm_is_blind_to_on_manifold_attacks` locks that in.
 mitigation policy take it unchanged. The anomaly score is an issuer-side signal computed
 at scoring time, not something an attacker sets, so `FEATURE_COLUMNS` stays frozen.
 
+## Attacks are campaigns, not rows
+
+`velocity_1h`, `velocity_24h`, `time_since_last_txn_min` and `amount_to_avg_ratio` are
+four views of one timeline. Sampling them independently produces transactions that cannot
+exist — and it did:
+
+| | violates the 1h rule | violates the 24h rule |
+|---|---|---|
+| `threshold_hugging` (hero vector), before | 69.9% | **100%** |
+| real IEEE-CIS traffic | 0% | 0% |
+| every vector, now | **0%** | **0%** |
+
+*The rule: if k transactions happened in the last hour, the previous one was at most an
+hour ago.* The hero vector was physically impossible in every single row. Real traffic
+never is, because it is derived from timelines.
+
+So a vector now declares a `TemporalProfile` — how many accounts, how many transactions
+each, how far apart, how the amount moves — and the generator lays out an actual
+timeline. `card_testing` fires 20-60 probes seconds apart; `bustout` ages quietly for
+days then bursts over a few hours with escalating amounts; `upi_collect` drains through
+3-7 hops minutes apart, each smaller than the last; `threshold_hugging` moves at an
+ordinary cadence of an hour to two days.
+
+The behavioural features are then **derived** from that timeline by
+[`chhal/behaviour.py`](chhal/behaviour.py) — the same function `scripts/prepare_ieee.py`
+calls on the 590,540 real transactions. One implementation, both sides: whatever
+relationships hold between these features in real data hold in the attacks, because it is
+literally the same arithmetic. Consistency is not enforced afterwards, it is impossible to
+violate. `hour` and `day_of_week` come from the timestamps too.
+
+Each campaign also carries a short history of ordinary spend before the attack begins.
+That is what makes `amount_to_avg_ratio` mean *"large for this account"* rather than
+just *"large"* — a bust-out reads as anomalous against what that card actually spent,
+which is the entire signal.
+
+Account-level features (`account_age_days`, `is_cross_border`, `channel_code`) are
+sampled once per account and broadcast: one card does not change country or rail partway
+through a campaign.
+
+---
+
+## Latency — can this run inside an authorization?
+
+A card authorization is a synchronous round trip with a budget of roughly 100-300ms, most
+of it network and issuer systems. The risk decision gets tens of milliseconds. So the
+number that matters is the **full path at n=1** — anomaly score, detector, calibration,
+action decision — one transaction at a time, which is how authorizations actually arrive.
+
+```bash
+python scripts/latency_check.py
+```
+
+| | p50 | p95 | p99 |
+|---|---|---|---|
+| **full path, single transaction** | **1.18 ms** | 1.22 ms | **1.24 ms** |
+| detector alone, single transaction | 0.26 ms | — | — |
+
+**~40× headroom** against a 50ms risk-decision budget at p99. Batch throughput is
+**138,907 txns/sec** (7.2 µs each) at a batch of 10,000 — that is the nightly-rescoring
+number, not the live-auth one, and should not be quoted as such.
+
+Model footprint is 78MB total, of which the anomaly arm is 76.5MB. There are no external
+lookups, no feature store and no network calls on the scoring path.
+
 ## Repository layout
 
 ```
@@ -276,14 +345,17 @@ chhal/
   optimizer.py     # constrained evasion optimizer (the novel core)
   evaluation.py    # held-out split protocol + metrics
   fidelity.py      # KS-tests + on-manifold rate — fidelity as a metric, not a claim
+  behaviour.py     # timeline -> velocity/recency/ratio; used on real data AND attacks
   mitigation.py    # calibration + expected-cost action policy — the "mitigate" pillar
   ensemble.py      # anomaly arm + StackedDetector; see the negative result above
+  redteam/campaign.py  # TemporalProfile — how each vector unfolds on an account
   loop.py          # orchestration -> the arms-race curve
 scripts/prepare_ieee.py          # one-time: raw IEEE-CIS -> derived FEATURE_COLUMNS
 scripts/run_loop.py              # run the loop, write results/
 scripts/generalisation_check.py  # leave-one-vector-out recall on an unseen attack family
 scripts/mitigation_report.py     # calibrate, decide, price the policies
 scripts/ensemble_check.py        # supervised vs max-fusion vs stacked, leave-one-out
+scripts/latency_check.py         # per-transaction latency, throughput, footprint
 dashboard/app.py                 # 3-panel Streamlit demo (replays results/)
 tests/                           # contract, optimizer, loop, fidelity, mitigation
 ```

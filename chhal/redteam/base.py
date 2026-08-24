@@ -4,6 +4,23 @@ Each vector knows how to render a *storyline* (the GenAI narrative a judge reads
 *transaction pattern* (rows in the frozen feature space). The evasion optimizer then
 adapts the pattern against the current detector — that adaptation is the loop.
 
+Why a vector describes a campaign rather than a pile of rows
+------------------------------------------------------------
+`velocity_1h`, `velocity_24h`, `time_since_last_txn_min` and `amount_to_avg_ratio` are
+four views of one timeline, so sampling them independently produces transactions that
+cannot exist. It did: 100% of the hero vector's rows claimed activity in the last 24
+hours while also claiming the previous transaction was days ago, against 0% of real
+traffic. A judge who checks that once stops believing the rest.
+
+So a vector now declares a `TemporalProfile` — accounts, transactions each, gaps, amount
+trajectory — and the base class lays out a real timeline, then DERIVES the behavioural
+features from it with `chhal.behaviour.derive`, the same function used on the 590,540
+real transactions. `hour` and `day_of_week` come from the timestamps too. Consistency is
+not checked afterwards; it cannot be violated.
+
+Each campaign carries a short history of ordinary spend before the attack starts, which
+is what makes `amount_to_avg_ratio` mean "large for THIS account" rather than "large".
+
 Why vectors no longer contain hand-picked numbers
 -------------------------------------------------
 A vector used to say `amount ~ lognormal(6.6, 0.5)`. Against the real IEEE-CIS
@@ -26,7 +43,9 @@ from typing import Dict, Tuple
 import numpy as np
 import pandas as pd
 
+from ..behaviour import day_of_week_of, derive, hour_of
 from ..contract import FEATURE_COLUMNS, INTEGER_FEATURES, AttackBatch
+from .campaign import TemporalProfile, generate
 
 
 class BaseProfile:
@@ -81,9 +100,40 @@ class AttackVector(ABC):
             )
         return self.profile
 
+    # Features that belong to the compromised ACCOUNT, not to a single transaction. One
+    # card does not change country, rail or age partway through a campaign, so these are
+    # sampled once per entity and broadcast across its rows.
+    ENTITY_LEVEL = ("account_age_days", "is_cross_border", "channel_code")
+
+    temporal: TemporalProfile = None  # each vector must declare its own
+
     @abstractmethod
+    def static_features(self, n: int, rng: np.random.Generator) -> Dict[str, np.ndarray]:
+        """The columns that are not derived from the timeline, per row.
+
+        Everything temporal (amount, hour, day_of_week, both velocities, the gap and the
+        amount ratio) is produced by the campaign and must NOT appear here.
+        """
+
     def render(self, n: int, rng: np.random.Generator) -> pd.DataFrame:
-        """Return n fraud rows in FEATURE_COLUMNS order (un-optimized seed attacks)."""
+        """n fraud rows, laid out as campaigns on accounts and derived from the timeline."""
+        if self.temporal is None:
+            raise RuntimeError(f"{type(self).__name__} declares no TemporalProfile")
+        camp = generate(self.temporal, n, self.p, rng)
+        beh = derive(camp.entity, camp.timestamp_s, camp.amount)
+
+        df = pd.DataFrame({
+            "amount": camp.amount,
+            "hour": hour_of(camp.timestamp_s),
+            "day_of_week": day_of_week_of(camp.timestamp_s),
+            **{c: beh[c].to_numpy() for c in beh.columns},
+            **self.static_features(len(camp.amount), rng),
+        })
+        for col in self.ENTITY_LEVEL:                    # one value per account
+            df[col] = df.groupby(camp.entity)[col].transform("first")
+
+        # history rows exist only to give the account a baseline; they are not attacks
+        return df[camp.is_attack].head(n).reset_index(drop=True)
 
     def batch(self, n: int, iteration: int, rng: np.random.Generator) -> AttackBatch:
         df = self.render(n, rng)[FEATURE_COLUMNS].reset_index(drop=True)

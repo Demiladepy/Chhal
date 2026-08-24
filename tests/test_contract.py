@@ -59,15 +59,23 @@ def test_all_vectors_emit_frozen_feature_space():
 
 
 def test_calibrated_vectors_stay_inside_the_real_value_range():
-    """Seed attacks are drawn through the legit inverse CDF, so before the optimizer
-    touches anything they must already sit inside the observed range of the population."""
+    """Columns drawn through the legit inverse CDF must sit inside the observed range
+    before the optimizer touches anything.
+
+    Only the non-derived columns are checked. `velocity_*`, `time_since_last_txn_min`
+    and `amount_to_avg_ratio` now come from the campaign timeline rather than the
+    quantile grid (see chhal/behaviour.py), so they can legitimately land outside the
+    range a small sample happens to contain — a 7-day gap is ordinary in real traffic
+    but may simply be absent from 3,000 synthetic rows. Their correctness is a
+    consistency property, tested in test_behaviour.py.
+    """
     base = load_base_data(seed=5, **SMALL)
     prof = profile_for(base)
     rng = np.random.default_rng(5)
     legit = base.train[base.train["is_fraud"] == 0]
     for V in ALL_VECTORS:
         rows = V().calibrate(prof).batch(300, 0, rng).transactions
-        for col in ("amount", "account_age_days", "merchant_risk", "time_since_last_txn_min"):
+        for col in ("amount", "account_age_days", "merchant_risk"):
             assert rows[col].min() >= legit[col].min() - 1e-6, f"{V.vector_id}.{col} below observed"
             assert rows[col].max() <= legit[col].max() + 1e-6, f"{V.vector_id}.{col} above observed"
 

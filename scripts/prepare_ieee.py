@@ -71,6 +71,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from chhal.behaviour import derive  # noqa: E402
 from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN  # noqa: E402
 
 # Expected shape of the genuine dataset — we refuse to proceed on anything else.
@@ -79,7 +80,6 @@ EXPECTED_FRAUDS = 20_663
 
 HOUR_OFFSET = -5          # aligns the empirical diurnal trough to ~04:00 local
 DOMESTIC_ADDR2 = 87.0     # 88.1% of rows; everything else is cross-border
-FIRST_TXN_GAP_MIN = 43_200.0   # 30 days, used when a uid has no prior transaction
 TE_SMOOTHING = 50.0       # Bayesian prior weight for merchant-risk target encoding
 TE_FOLDS = 5
 TEST_FRAC = 0.25
@@ -133,73 +133,23 @@ def _load_raw(raw_dir: str) -> pd.DataFrame:
     return df.sort_values("TransactionDT", kind="mergesort").reset_index(drop=True)
 
 
-def _block_bounds(codes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Start index of the contiguous block each row belongs to, and the block starts."""
-    starts = np.flatnonzero(np.r_[True, codes[1:] != codes[:-1]])
-    block_start_of_row = np.repeat(starts, np.diff(np.r_[starts, len(codes)]))
-    return block_start_of_row, starts
-
-
 def _behavioural_features(df: pd.DataFrame) -> pd.DataFrame:
     """Velocity, recency and amount-ratio computed within each uid over real time.
 
-    Every value uses only transactions STRICTLY BEFORE the row it describes, so no row
-    can see its own future. Fully vectorised: sort once by (uid, time), then work on
-    contiguous blocks.
+    The arithmetic lives in `chhal.behaviour`, which the red team also calls on its
+    generated campaigns. One implementation, both sides — so whatever relationships hold
+    between these four features in real data hold in the attacks too, and neither can
+    drift away from the other.
     """
     day = (df.TransactionDT // 86_400).astype(np.int64)
     first_seen_day = day - df.D1.fillna(0).astype(np.int64)
     uid = (df.card1.astype(str) + "_" + df.addr1.astype(str) + "_"
            + first_seen_day.astype(str))
     uid_code = pd.factorize(uid)[0]
-
-    dt = df.TransactionDT.to_numpy(np.int64)
-    amt = df.TransactionAmt.to_numpy(np.float64)
-
-    order = np.lexsort((dt, uid_code))          # by uid, then time
-    u_s, dt_s, amt_s = uid_code[order], dt[order], amt[order]
-    block_start, starts = _block_bounds(u_s)
-    pos_in_block = np.arange(len(u_s)) - block_start
-
-    # --- velocity: prior transactions of this uid inside a trailing window ----------
-    def velocity(window_s: int) -> np.ndarray:
-        out = np.empty(len(u_s), np.int64)
-        ends = np.r_[starts[1:], len(u_s)]
-        for s, e in zip(starts, ends):
-            seg = dt_s[s:e]
-            # index of the first prior txn still inside the window, per row
-            lo = np.searchsorted(seg, seg - window_s, side="left")
-            out[s:e] = np.arange(e - s) - lo
-        return out
-
-    vel_1h = velocity(3_600)
-    vel_24h = velocity(86_400)
-
-    # --- time since this uid's previous transaction ---------------------------------
-    prev_dt = np.r_[0, dt_s[:-1]]
-    gap_min = (dt_s - prev_dt) / 60.0
-    gap_min[pos_in_block == 0] = FIRST_TXN_GAP_MIN
-
-    # --- amount vs this uid's own prior average -------------------------------------
-    csum = np.cumsum(amt_s)
-    prior_sum = np.r_[0.0, csum[:-1]] - np.where(
-        block_start > 0, np.r_[0.0, csum[:-1]][block_start], 0.0
-    )
-    with np.errstate(divide="ignore", invalid="ignore"):
-        prior_mean = np.where(pos_in_block > 0, prior_sum / np.maximum(pos_in_block, 1), np.nan)
-        ratio = np.where(pos_in_block > 0, amt_s / prior_mean, 1.0)
-    ratio = np.nan_to_num(ratio, nan=1.0, posinf=1.0)
-
-    # --- restore original row order --------------------------------------------------
-    inv = np.empty_like(order)
-    inv[order] = np.arange(len(order))
-    return pd.DataFrame({
-        "velocity_1h": vel_1h[inv],
-        "velocity_24h": vel_24h[inv],
-        "time_since_last_txn_min": gap_min[inv],
-        "amount_to_avg_ratio": ratio[inv],
-        "_uid": uid_code,
-    })
+    out = derive(uid_code, df.TransactionDT.to_numpy(np.int64),
+                 df.TransactionAmt.to_numpy(np.float64))
+    out["_uid"] = uid_code
+    return out
 
 
 def _merchant_risk(df: pd.DataFrame, is_train: np.ndarray, seed: int) -> np.ndarray:

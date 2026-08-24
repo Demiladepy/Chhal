@@ -1,19 +1,30 @@
-"""The four live-loop attack vectors — each emits transaction features.
+"""The four live-loop attack vectors — each one a campaign shape, not a row shape.
 
-These flow through the tabular detector and constitute the closed loop. Text/agent
-"showcase" vectors (voice clone, prompt injection) live in the write-up, not here,
-because they do not emit tabular features — see the strategy doc.
+A vector declares two things and nothing else:
 
-Every number below is a QUANTILE of real legitimate traffic, never a raw value. A band
-of (0.35, 0.75) on `amount` means "the middle of what real cardholders actually spend";
-(0.99, 0.9995) on `velocity_1h` means "as fast as the busiest real accounts, and no
-faster". Values are drawn back through the real inverse CDF (see base.BaseProfile), so
-a seed attack is assembled out of values that genuinely occur in the population before
-the evasion optimizer adapts it at all. Change the dataset and the vectors re-scale.
+  `temporal`          how the attack unfolds on a compromised account — how many
+                      transactions, how far apart, how the amount moves, and what the
+                      account's ordinary spend looked like beforehand. The base class
+                      lays out the timeline and DERIVES amount, hour, day_of_week, both
+                      velocities, the inter-transaction gap and the amount-to-average
+                      ratio from it, using the same function applied to the 590,540 real
+                      transactions. Those seven columns are therefore internally
+                      consistent by construction rather than by inspection.
 
-The bands are what separate the vectors from each other: `threshold_hugging` lives
-inside the legitimate body, `card_testing` lives in the extreme tails, and the other two
-sit in between. That separation is what the per-vector KS table then measures.
+  `static_features`   the columns that are not temporal — account age, beneficiary,
+                      cross-border, rail, issuer-side merchant risk.
+
+Every number is a QUANTILE of real legitimate traffic, never a raw value: (0.35, 0.75)
+on `amount` means "the middle of what real cardholders actually spend". Change the
+dataset and the vectors re-scale themselves.
+
+The bands and the campaign shapes together are what separate the vectors:
+`threshold_hugging` lives inside the legitimate body and moves at a legitimate pace,
+`card_testing` lives in the extreme tails and moves in seconds. That separation is what
+the per-vector KS table then measures.
+
+Text/agent "showcase" vectors (voice clone, prompt injection) live in the write-up, not
+here, because they do not emit tabular features — see the strategy doc.
 """
 from __future__ import annotations
 
@@ -21,17 +32,20 @@ import numpy as np
 import pandas as pd
 
 from .base import AttackVector
+from .campaign import TemporalProfile
 
 
 class ThresholdHugging(AttackVector):
     """HERO VECTOR. LLM-tuned sequences that sit just under velocity/amount rules and
-    imitate the victim's own normal behaviour. Hardest to catch — the heart of the
-    arms race. If everything else is cut, this stays.
+    imitate the victim's own normal behaviour. Hardest to catch — the heart of the arms
+    race. If everything else is cut, this stays.
 
-    Every band here is deliberately INSIDE the legitimate body, never in a tail. That
-    is the whole claim: this vector should be the one with the lowest KS distance from
-    real traffic, and the per-vector fidelity table is where that gets checked rather
-    than asserted.
+    Everything here is deliberately INSIDE the legitimate body: bands in the middle of
+    the distribution, and a cadence (an hour to two days apart) indistinguishable from
+    ordinary card use. Its history is drawn from the same band as its attack, so
+    `amount_to_avg_ratio` lands near 1 — the account is spending what it always spends.
+    It should be the vector with the lowest KS distance from real traffic, and the
+    per-vector fidelity table is where that is checked rather than asserted.
     """
 
     vector_id = "threshold_hugging"
@@ -40,23 +54,25 @@ class ThresholdHugging(AttackVector):
         "every velocity and amount threshold, mimicking legitimate behaviour so the "
         "detector sees nothing anomalous."
     )
+    temporal = TemporalProfile(
+        txns_per_entity=(3, 9),
+        inter_arrival_s=(3_600.0, 172_800.0),      # 1 hour to 2 days — a normal cadence
+        amount_band=(0.35, 0.75),
+        history_txns=(6, 20),                      # a well-established account
+        history_gap_s=(7_200.0, 604_800.0),
+        history_amount_band=(0.35, 0.75),          # attack spend == normal spend
+        start_hour_band=(0.25, 0.85),
+    )
 
-    def render(self, n, rng):
+    def static_features(self, n, rng):
         p = self.p
-        return pd.DataFrame({
-            "amount": p.band("amount", 0.35, 0.75, n, rng),                 # ordinary size
-            "hour": p.band("hour", 0.25, 0.85, n, rng),                     # active hours
-            "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": p.band("velocity_1h", 0.80, 0.95, n, rng),       # under the cap
-            "velocity_24h": p.band("velocity_24h", 0.80, 0.95, n, rng),     # looks normal
-            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.40, 0.70, n, rng),
+        return {
             "account_age_days": p.band("account_age_days", 0.55, 0.95, n, rng),
-            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.35, 0.75, n, rng),
-            "is_new_beneficiary": np.zeros(n, int),                         # known payee
+            "is_new_beneficiary": np.zeros(n, int),                 # known payee
             "is_cross_border": np.zeros(n, int),
-            "channel_code": p.categorical("channel_code", n, rng),          # real channel mix
-            "merchant_risk": p.band("merchant_risk", 0.10, 0.50, n, rng),   # low, issuer-side
-        })
+            "channel_code": p.categorical("channel_code", n, rng),  # real channel mix
+            "merchant_risk": p.band("merchant_risk", 0.10, 0.50, n, rng),
+        }
 
 
 class SyntheticBustout(AttackVector):
@@ -68,29 +84,31 @@ class SyntheticBustout(AttackVector):
         "quietly for months, then busts out: a sudden burst of high-value transfers to "
         "fresh beneficiaries."
     )
+    temporal = TemporalProfile(
+        txns_per_entity=(8, 25),
+        inter_arrival_s=(120.0, 3_600.0),          # the burst: minutes apart, over hours
+        amount_band=(0.90, 0.995),
+        history_txns=(5, 15),
+        history_gap_s=(86_400.0, 1_209_600.0),     # the quiet ageing: 1 to 14 days apart
+        history_amount_band=(0.15, 0.45),          # small, unremarkable spend
+        amount_trend=1.6,                          # escalating as it empties the account
+    )
 
-    def render(self, n, rng):
+    def static_features(self, n, rng):
         p = self.p
-        return pd.DataFrame({
-            "amount": p.band("amount", 0.93, 0.995, n, rng),                # large, still real
-            "hour": rng.integers(0, 24, n),
-            "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": p.band("velocity_1h", 0.95, 0.995, n, rng),      # burst
-            "velocity_24h": p.band("velocity_24h", 0.96, 0.999, n, rng),
-            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.95, 0.999, n, rng),
+        return {
             # "aged quietly for months" has to mean months in THIS population: the
-            # 0.75-0.93 band of real account age is 118-428 days. The naive middle of
-            # the distribution would have been 0-3 days, because real card populations
-            # are dominated by recently-first-seen cards.
+            # 0.75-0.93 band of real account age is 118-428 days. The naive middle of the
+            # distribution would have been 0-3 days, because real card populations are
+            # dominated by recently-first-seen cards.
             "account_age_days": p.band("account_age_days", 0.75, 0.93, n, rng),
-            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.02, 0.20, n, rng),
             "is_new_beneficiary": np.ones(n, int),
             # elevated vs the 0.7% legit / 2.2% fraud base rate, because cashing out
             # abroad is this vector's point — but not so high it leaves the manifold.
             "is_cross_border": p.bernoulli(0.10, n, rng),
             "channel_code": p.categorical("channel_code", n, rng),
             "merchant_risk": p.band("merchant_risk", 0.70, 0.97, n, rng),
-        })
+        }
 
 
 class CardTesting(AttackVector):
@@ -101,23 +119,24 @@ class CardTesting(AttackVector):
         "An agent probes stolen card ranges with many micro-authorizations, spacing "
         "and sizing them to stay under velocity limits until a live card is found."
     )
+    temporal = TemporalProfile(
+        txns_per_entity=(20, 60),                  # many probes on one stolen range
+        inter_arrival_s=(2.0, 120.0),              # seconds to two minutes apart
+        amount_band=(0.005, 0.06),                 # tiny probes
+        history_txns=(0, 3),                       # a freshly stolen card has no history
+        history_gap_s=(3_600.0, 86_400.0),
+        history_amount_band=(0.20, 0.60),
+    )
 
-    def render(self, n, rng):
+    def static_features(self, n, rng):
         p = self.p
-        return pd.DataFrame({
-            "amount": p.band("amount", 0.005, 0.06, n, rng),                # tiny probes
-            "hour": rng.integers(0, 24, n),
-            "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": p.band("velocity_1h", 0.98, 0.9995, n, rng),     # rapid
-            "velocity_24h": p.band("velocity_24h", 0.99, 0.9995, n, rng),
-            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.005, 0.10, n, rng),
+        return {
             "account_age_days": p.band("account_age_days", 0.0, 0.25, n, rng),
-            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.0, 0.05, n, rng),
             "is_new_beneficiary": np.ones(n, int),
             "is_cross_border": p.bernoulli(0.08, n, rng),
-            "channel_code": np.zeros(n, int),                               # card rail
+            "channel_code": np.zeros(n, int),                       # card rail
             "merchant_risk": p.band("merchant_risk", 0.50, 0.90, n, rng),
-        })
+        }
 
 
 class UpiCollectScam(AttackVector):
@@ -129,23 +148,26 @@ class UpiCollectScam(AttackVector):
         "collect-request; the funds are then drained through a chain of fresh VPAs "
         "within minutes."
     )
+    temporal = TemporalProfile(
+        txns_per_entity=(3, 7),                    # a short chain of fresh VPAs
+        inter_arrival_s=(30.0, 600.0),             # "within minutes"
+        amount_band=(0.75, 0.96),
+        history_txns=(4, 15),
+        history_gap_s=(7_200.0, 432_000.0),
+        history_amount_band=(0.25, 0.60),
+        start_hour_band=(0.30, 0.90),              # the victim has to be awake to approve
+        amount_trend=0.7,                          # each hop takes less as funds run out
+    )
 
-    def render(self, n, rng):
+    def static_features(self, n, rng):
         p = self.p
-        return pd.DataFrame({
-            "amount": p.band("amount", 0.75, 0.96, n, rng),
-            "hour": p.band("hour", 0.30, 0.90, n, rng),                     # victim awake
-            "day_of_week": rng.integers(0, 7, n),
-            "velocity_1h": p.band("velocity_1h", 0.85, 0.97, n, rng),
-            "velocity_24h": p.band("velocity_24h", 0.85, 0.97, n, rng),
-            "amount_to_avg_ratio": p.band("amount_to_avg_ratio", 0.85, 0.98, n, rng),
+        return {
             "account_age_days": p.band("account_age_days", 0.20, 0.80, n, rng),
-            "time_since_last_txn_min": p.band("time_since_last_txn_min", 0.01, 0.15, n, rng),
             "is_new_beneficiary": np.ones(n, int),
             "is_cross_border": np.zeros(n, int),
-            "channel_code": np.ones(n, int),                                # upi rail
+            "channel_code": np.ones(n, int),                        # upi rail
             "merchant_risk": p.band("merchant_risk", 0.40, 0.80, n, rng),
-        })
+        }
 
 
 ALL_VECTORS = [ThresholdHugging, SyntheticBustout, CardTesting, UpiCollectScam]
