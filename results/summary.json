@@ -2,12 +2,30 @@
   "data_source": "ieee",
   "train_rows": 442905,
   "test_rows": 147635,
-  "baseline_benchmark_f1": 0.0,
-  "baseline_benchmark_recall": 0.0,
-  "final_benchmark_f1": 0.9679,
-  "final_benchmark_recall": 0.9965,
-  "final_benchmark_auc": 0.9999,
-  "final_fp_rate_on_legit": 0.0009,
+  "operating_points": {
+    "recall_at_fpr=0.001": {
+      "baseline": 0.0,
+      "final": 0.9965
+    },
+    "recall_at_fpr=0.005": {
+      "baseline": 0.0,
+      "final": 0.997
+    },
+    "recall_at_fpr=0.01": {
+      "baseline": 0.0,
+      "final": 0.998
+    }
+  },
+  "baseline_pr_auc": 0.0071,
+  "final_pr_auc": 0.998,
+  "final_alert_rate": 0.01478,
+  "naive_threshold_0.5": {
+    "baseline_f1": 0.0,
+    "final_f1": 0.9679,
+    "final_recall": 0.9965,
+    "final_roc_auc": 0.9999,
+    "final_fp_rate_on_legit": 0.0009
+  },
   "fidelity": {
     "on_manifold_rate": 1.0,
     "mimicry_vector": "threshold_hugging",
@@ -15,7 +33,7 @@
     "frac_off_manifold_pre_clip": 0.3236
   },
   "iterations": 8,
-  "runtime_seconds": 85.5,
+  "runtime_seconds": 85.1,
   "config": {
     "iterations": 8,
     "attacks_per_vector": 400,

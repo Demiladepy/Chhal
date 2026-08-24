@@ -54,7 +54,12 @@ manifold quantiles used by the evasion optimizer are computed on TRAIN ONLY.
 
 Usage
 -----
-    python scripts/prepare_ieee.py --raw ~/chhal-data/raw --out ~/chhal-data/ieee_base.parquet
+    python scripts/prepare_ieee.py
+
+Downloads the raw transactions (~683MB) on first run if they are not already present,
+derives the features in a few seconds, and writes an 8MB parquet. The raw CSV is only
+needed to rebuild that parquet, so it is safe to delete afterwards — this script will
+fetch it again if it is ever needed.
 """
 from __future__ import annotations
 
@@ -86,8 +91,36 @@ RAW_COLUMNS = [
 CHANNEL_MAP = {"W": 0, "C": 1, "R": 2, "H": 2, "S": 2}
 
 
+SOURCE_URL = ("https://huggingface.co/datasets/aliceczr/ieee-fraud-detection/"
+              "resolve/main/train_transaction.csv")
+
+
+def _download(path: str) -> None:
+    """Fetch the raw transactions. Written to a temp file and moved into place, so an
+    interrupted download can never be mistaken for a complete one on the next run."""
+    import shutil
+    import urllib.request
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".part"
+    print(f"[fetch ] {SOURCE_URL}\n         -> {path} (~683MB, one time)")
+    with urllib.request.urlopen(SOURCE_URL) as r, open(tmp, "wb") as f:
+        total = int(r.headers.get("content-length", 0))
+        done = 0
+        while chunk := r.read(1 << 20):
+            f.write(chunk)
+            done += len(chunk)
+            if total:
+                print(f"\r         {100*done/total:5.1f}%  {done/1e6:7.1f} / {total/1e6:.0f} MB",
+                      end="", flush=True)
+    print()
+    shutil.move(tmp, path)
+
+
 def _load_raw(raw_dir: str) -> pd.DataFrame:
     path = os.path.join(raw_dir, "train_transaction.csv")
+    if not os.path.exists(path):
+        _download(path)
     df = pd.read_csv(path, usecols=RAW_COLUMNS)
     n, f = len(df), int(df.isFraud.sum())
     if n != EXPECTED_ROWS or f != EXPECTED_FRAUDS:

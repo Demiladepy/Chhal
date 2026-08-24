@@ -2,6 +2,9 @@
 
 We measure the two things that tell the true story, and keep them separate:
 
+All recalls on the curve are measured at a FIXED false-positive budget (0.1% of real
+legitimate traffic), not at a 0.5 threshold — see evaluation.py for why.
+
   * BENCHMARK (blue generalisation, the money chart): a FIXED set of hard adaptive
     attacks, built once against the baseline detector and NEVER trained on. As the loop
     feeds the detector diverse adaptive attacks, its recall on this fixed held-out
@@ -98,8 +101,9 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     b0 = bench_report(detector, 0)
     curve_rows.append({**b0.as_row(), "phase": "benchmark"})
     baseline_report = b0
-    for vid, rec in b0.per_vector_recall.items():
-        per_vec_rows.append({"iteration": 0, "vector": vid, "recall": rec})
+    for vid, rec in b0.per_vector_recall_at_fpr.items():
+        per_vec_rows.append({"iteration": 0, "vector": vid, "recall": rec,
+                             "recall_at_threshold_0.5": b0.per_vector_recall.get(vid, 0.0)})
 
     train_pool = base.train.copy()
     last_adapted: List[AttackBatch] = []
@@ -124,8 +128,9 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
         # 4a. BENCHMARK — blue generalisation on the fixed held-out set (should rise)
         bench = bench_report(detector, t)
         curve_rows.append({**bench.as_row(), "phase": "benchmark"})
-        for vid, rec in bench.per_vector_recall.items():
-            per_vec_rows.append({"iteration": t, "vector": vid, "recall": rec})
+        for vid, rec in bench.per_vector_recall_at_fpr.items():
+            per_vec_rows.append({"iteration": t, "vector": vid, "recall": rec,
+                                 "recall_at_threshold_0.5": bench.per_vector_recall.get(vid, 0.0)})
 
         # 4b. PRESSURE — retrained detector on this iteration's fresh evasions
         pressure = evaluate(detector, legit_eval, ho, ho_vec, t, "heldout_novel")

@@ -1,23 +1,43 @@
 """The evaluation protocol — the part that turns a pretty chart into a defensible one.
 
-The judge's question is: "Isn't this circular — the red team optimises against your
-detector, you retrain on those and score, of course it improves?" The answer is the
-held-out split: attacks are split into `train` (detector may learn them) and
-`heldout_novel` (detector NEVER trains on them). We plot performance on
-`heldout_novel`, which measures generalisation to unseen adaptive fraud, not memory.
+Two questions get answered here, and they are separate.
+
+**Is the improvement real, or circular?** The red team optimises against our detector,
+we retrain on those attacks, then we score — of course it improves. The answer is the
+held-out split: attacks are split into `train` (the detector may learn them) and
+`heldout_novel` (the detector NEVER trains on them). Everything reported is measured on
+`heldout_novel`. For the stronger version of the same question — generalisation to a
+whole attack FAMILY never seen in any form — see `scripts/generalisation_check.py`.
+
+**Is the number quotable?** Not at a 0.5 threshold, and not as ROC AUC. No payments
+system decides at `score >= 0.5`; they are tuned to a false-positive budget, because
+flagging good customers is the expensive failure. And at 3.5% fraud prevalence ROC AUC
+is flattered by an enormous true-negative pile — 0.999 there is unremarkable. So the
+headline metrics are:
+
+  * **recall at a fixed false-positive rate** (0.1% / 0.5% / 1% of legitimate traffic)
+    — "inside the budget we can actually afford, how much fraud do we catch?"
+  * **PR AUC** (average precision) — the summary that stays honest under imbalance.
+  * **alert rate** — what share of ALL traffic the operating point flags, which is the
+    number that decides whether the queue behind it is staffable.
+
+The 0.5-threshold precision/recall/F1 are still computed, so the two can be compared
+directly, but they are reported as the naive baseline they are.
 """
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import (average_precision_score, f1_score, precision_score,
+                             recall_score, roc_auc_score)
 
-from .contract import FEATURE_COLUMNS, AttackBatch, ScoreReport
+from .contract import (FEATURE_COLUMNS, OPERATING_POINTS, PRIMARY_FPR, AttackBatch,
+                       ScoreReport)
 from .detector import Detector
 
-DECISION_THRESHOLD = 0.5
+DECISION_THRESHOLD = 0.5   # the naive cutoff, kept only as a comparison baseline
 
 
 def split_attacks(
@@ -38,6 +58,22 @@ def split_attacks(
     return train, heldout, np.array(heldout_vectors)
 
 
+def threshold_for_fpr(legit_proba: np.ndarray, fpr: float) -> float:
+    """The score above which exactly `fpr` of legitimate traffic sits."""
+    if len(legit_proba) == 0:
+        return float("inf")
+    return float(np.quantile(legit_proba, 1.0 - fpr))
+
+
+def recall_at_fpr(legit_proba: np.ndarray, attack_proba: np.ndarray,
+                  fpr: float) -> Tuple[float, float]:
+    """Fraction of attacks caught when the threshold is set to flag `fpr` of legit traffic."""
+    thr = threshold_for_fpr(legit_proba, fpr)
+    if len(attack_proba) == 0:
+        return 0.0, thr
+    return float((attack_proba >= thr).mean()), thr
+
+
 def evaluate(
     detector: Detector,
     legit: pd.DataFrame,
@@ -50,14 +86,26 @@ def evaluate(
     X = pd.concat([legit[FEATURE_COLUMNS], attacks[FEATURE_COLUMNS]], ignore_index=True)
     y = np.concatenate([np.zeros(len(legit)), np.ones(len(attacks))])
     proba = detector.score(X)
+    legit_proba, attack_proba = proba[: len(legit)], proba[len(legit):]
+
+    # --- the numbers worth quoting -------------------------------------------------
+    rec_at, thr_at = {}, {}
+    for fpr in OPERATING_POINTS:
+        rec_at[fpr], thr_at[fpr] = recall_at_fpr(legit_proba, attack_proba, fpr)
+    primary_thr = thr_at.get(PRIMARY_FPR, threshold_for_fpr(legit_proba, PRIMARY_FPR))
+    alert_rate = float((proba >= primary_thr).mean())
+    pr_auc = float(average_precision_score(y, proba)) if len(np.unique(y)) > 1 else 0.0
+
+    per_vector_at_fpr: Dict[str, float] = {}
+    for v in np.unique(attack_vectors):
+        mask = attack_vectors == v
+        per_vector_at_fpr[v] = float((attack_proba[mask] >= primary_thr).mean()) if mask.any() else 0.0
+
+    # --- the naive 0.5-threshold baseline, for comparison only ----------------------
     pred = (proba >= DECISION_THRESHOLD).astype(int)
-
-    legit_pred = pred[: len(legit)]
-    fp_rate = float(legit_pred.mean()) if len(legit) else 0.0
-
-    # per-vector recall: of this vector's rows, how many did we catch?
-    per_vector: Dict[str, float] = {}
+    fp_rate = float(pred[: len(legit)].mean()) if len(legit) else 0.0
     attack_pred = pred[len(legit):]
+    per_vector: Dict[str, float] = {}
     for v in np.unique(attack_vectors):
         mask = attack_vectors == v
         per_vector[v] = float(attack_pred[mask].mean()) if mask.any() else 0.0
@@ -70,6 +118,11 @@ def evaluate(
         f1=float(f1_score(y, pred, zero_division=0)),
         auc=float(roc_auc_score(y, proba)) if len(np.unique(y)) > 1 else 0.5,
         fp_rate_on_legit=fp_rate,
+        pr_auc=pr_auc,
+        recall_at_fpr=rec_at,
+        threshold_at_fpr=thr_at,
+        alert_rate=alert_rate,
         per_vector_recall=per_vector,
+        per_vector_recall_at_fpr=per_vector_at_fpr,
         top_features=detector.top_gain_features(),
     )

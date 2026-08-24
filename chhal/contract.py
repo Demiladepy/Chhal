@@ -91,27 +91,60 @@ class AttackBatch:
         return len(self.transactions)
 
 
+# The false-positive rates a payments team actually tunes to. Fraud systems are not
+# operated at "score >= 0.5"; they are operated at "flag no more than X% of good
+# traffic, and catch as much as possible inside that budget". 0.1% is the tight,
+# realistic setting; the looser two show how much is bought by relaxing it.
+OPERATING_POINTS = (0.001, 0.005, 0.01)
+PRIMARY_FPR = 0.001
+
+
 @dataclass
 class ScoreReport:
-    """What the detector returns after scoring a set of transactions."""
+    """What the detector returns after scoring a set of transactions.
+
+    Two families of numbers live here and they are not equally trustworthy.
+
+    Operating-point metrics (`recall_at_fpr`, `pr_auc`, `alert_rate`) are the ones to
+    quote. Recall at a fixed false-positive rate is the question an issuer actually
+    asks, and `pr_auc` (average precision) is the honest summary under this much class
+    imbalance — ROC `auc` looks spectacular at 3.5% prevalence no matter what, because
+    the true-negative pile it divides by is enormous.
+
+    Threshold metrics (`precision`, `recall`, `f1`, `fp_rate_on_legit`) are kept for
+    continuity and comparison ONLY. They are computed at a fixed 0.5 cutoff, which no
+    deployed system uses.
+    """
 
     iteration: int
     split: str                           # "train" | "heldout_known" | "heldout_novel"
     precision: float
     recall: float
     f1: float
-    auc: float
+    auc: float                           # ROC AUC — flattering under imbalance, see above
     fp_rate_on_legit: float
+    pr_auc: float = 0.0                  # average precision — the honest summary
+    recall_at_fpr: Dict[float, float] = field(default_factory=dict)
+    threshold_at_fpr: Dict[float, float] = field(default_factory=dict)
+    alert_rate: float = 0.0              # share of ALL traffic flagged at PRIMARY_FPR
     per_vector_recall: Dict[str, float] = field(default_factory=dict)
+    per_vector_recall_at_fpr: Dict[str, float] = field(default_factory=dict)
     top_features: List[str] = field(default_factory=list)  # LightGBM gain ranking, not SHAP
 
     def as_row(self) -> Dict:
-        return {
+        row = {
             "iteration": self.iteration,
             "split": self.split,
+            # lead with the operating-point numbers
+            "pr_auc": self.pr_auc,
+            "alert_rate": self.alert_rate,
+            # threshold-0.5 numbers, retained for comparison only
             "precision": self.precision,
             "recall": self.recall,
             "f1": self.f1,
             "auc": self.auc,
             "fp_rate_on_legit": self.fp_rate_on_legit,
         }
+        for fpr in OPERATING_POINTS:
+            row[f"recall_at_fpr_{fpr}"] = self.recall_at_fpr.get(fpr, float("nan"))
+        return row

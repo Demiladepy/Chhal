@@ -43,12 +43,35 @@ separate:
   keeps finding new evasions the just-retrained model partly misses. The **gap** between the
   lines is the honest, unfinished arms race.
 
-**No leakage:** the base train/test split is frozen before any attack is injected; the
+**No leakage:** the base split is temporal and frozen before any attack is injected; the
 benchmark and pressure attacks touch neither.
 
-A representative run (8 iterations): benchmark recall **~0% → ~87%** while **FP on legit
-rises to ~2.2%**; the hero vector `threshold_hugging` stays hardest to catch (~0.67) because
-it mimics normal behaviour. Numbers vary by seed — reproduce with `scripts/run_loop.py`.
+### Measured where a payments team would actually run it
+
+Not at `score >= 0.5`, and not in ROC AUC. Fraud systems are tuned to a **false-positive
+budget** — flag no more than X% of good customers, catch as much as possible inside that —
+because flagging good customers is the expensive failure. And at 3.5% prevalence ROC AUC is
+flattered by an enormous true-negative pile: 0.9999 there is unremarkable. So the headline
+is **recall at a fixed FPR** and **PR AUC** (average precision), with the 0.5-threshold
+numbers kept only for comparison.
+
+Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~85s):
+
+| metric | baseline | after the loop |
+|---|---|---|
+| recall @ **0.1%** of legit flagged | 0.00% | **99.65%** |
+| recall @ 0.5% | 0.00% | 99.70% |
+| recall @ 1.0% | 0.00% | 99.80% |
+| **PR AUC** | 0.0071 | **0.9980** |
+| alert rate (share of all traffic) | 0.10% | 1.478% |
+
+For comparison, the naive 0.5 cutoff on the same run: F1 0.0 → 0.9679, ROC AUC 0.9999, FP on
+legit 0.09%. The ROC number is the one to distrust.
+
+The baseline catching **zero** is not a broken detector — the benchmark attacks were
+optimised specifically to evade it, which is the optimizer doing its job. The claim that
+survives scrutiny is not this curve but the leave-one-out one: **89.6% on an attack family
+never seen in any form** (`scripts/generalisation_check.py`). Numbers vary by seed.
 
 ---
 

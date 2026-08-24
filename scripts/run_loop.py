@@ -50,6 +50,7 @@ def main() -> None:
     plot_mimicry(result.fidelity_legit, result.fidelity_mimic, str(RESULTS / "fidelity.png"))
 
     bench = result.curve[result.curve["phase"] == "benchmark"]
+    op_cols = [c for c in bench.columns if c.startswith("recall_at_fpr_")]
     summary = {
         # Which population every number below was measured on. Quoted numbers are
         # meaningless without it: "synthetic" means we measured against a distribution
@@ -57,12 +58,24 @@ def main() -> None:
         "data_source": result.config["data_source"],
         "train_rows": result.config["train_rows"],
         "test_rows": result.config["test_rows"],
-        "baseline_benchmark_f1": round(float(bench["f1"].iloc[0]), 4),
-        "baseline_benchmark_recall": round(float(bench["recall"].iloc[0]), 4),
-        "final_benchmark_f1": round(float(bench["f1"].iloc[-1]), 4),
-        "final_benchmark_recall": round(float(bench["recall"].iloc[-1]), 4),
-        "final_benchmark_auc": round(float(bench["auc"].iloc[-1]), 4),
-        "final_fp_rate_on_legit": round(float(bench["fp_rate_on_legit"].iloc[-1]), 4),
+        # --- headline: measured at a false-positive budget a payments team can afford ---
+        "operating_points": {
+            c.replace("recall_at_fpr_", "recall_at_fpr="): {
+                "baseline": round(float(bench[c].iloc[0]), 4),
+                "final": round(float(bench[c].iloc[-1]), 4),
+            } for c in op_cols
+        },
+        "baseline_pr_auc": round(float(bench["pr_auc"].iloc[0]), 4),
+        "final_pr_auc": round(float(bench["pr_auc"].iloc[-1]), 4),
+        "final_alert_rate": round(float(bench["alert_rate"].iloc[-1]), 5),
+        # --- the naive 0.5 cutoff, retained for comparison only, never as the headline ---
+        "naive_threshold_0.5": {
+            "baseline_f1": round(float(bench["f1"].iloc[0]), 4),
+            "final_f1": round(float(bench["f1"].iloc[-1]), 4),
+            "final_recall": round(float(bench["recall"].iloc[-1]), 4),
+            "final_roc_auc": round(float(bench["auc"].iloc[-1]), 4),
+            "final_fp_rate_on_legit": round(float(bench["fp_rate_on_legit"].iloc[-1]), 4),
+        },
         "fidelity": result.fidelity,
         "iterations": cfg.iterations,
         "runtime_seconds": round(dt, 1),
@@ -71,12 +84,17 @@ def main() -> None:
     (RESULTS / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print("\n=== BENCHMARK: blue generalisation on the fixed held-out adversarial set ===")
-    print(bench[["iteration", "f1", "auc", "recall", "fp_rate_on_legit"]].to_string(index=False))
-    print(f"\nblue generalisation (fixed held-out benchmark): "
-          f"recall {summary['baseline_benchmark_recall']:.2%} -> "
-          f"{summary['final_benchmark_recall']:.2%}, "
-          f"F1 {summary['baseline_benchmark_f1']} -> {summary['final_benchmark_f1']}  "
-          f"(FP on legit={summary['final_fp_rate_on_legit']:.2%})")
+    print("    recall at a fixed share of REAL legitimate traffic flagged")
+    print(bench[["iteration"] + op_cols + ["pr_auc", "alert_rate"]].to_string(index=False))
+    print("\nblue generalisation (fixed held-out benchmark), at each operating point:")
+    for name, v in summary["operating_points"].items():
+        print(f"  {name:<22} {v['baseline']:.2%} -> {v['final']:.2%}")
+    print(f"  {'PR AUC':<22} {summary['baseline_pr_auc']:.4f} -> {summary['final_pr_auc']:.4f}")
+    print(f"  {'alert rate':<22} {summary['final_alert_rate']:.3%} of all traffic")
+    nv = summary["naive_threshold_0.5"]
+    print(f"\n  for comparison, the naive 0.5 cutoff: F1 {nv['baseline_f1']} -> {nv['final_f1']}, "
+          f"ROC AUC {nv['final_roc_auc']} (flattered by 3.5% prevalence), "
+          f"FP on legit {nv['final_fp_rate_on_legit']:.2%}")
     fid = result.fidelity
     print(f"\nfidelity: on-manifold rate={fid['on_manifold_rate']:.2%} (guardrail held); "
           f"mimicry vector KS vs legit={fid['mimicry_mean_ks_vs_legit']:.3f} (lower=stealthier)")
