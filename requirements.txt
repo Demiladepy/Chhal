@@ -2,6 +2,7 @@
 # numpy pinned <2 to match the pandas/lightgbm wheels (ABI compatibility).
 numpy==1.26.4
 pandas==2.2.2
+pyarrow==25.0.1        # pandas needs it for the parquet base data
 scikit-learn==1.4.2
 lightgbm==4.6.0
 scipy==1.13.1

@@ -173,8 +173,9 @@ A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py))
   (`bustout`, `card_testing`) sit further out **by design** — that separation is the fraud
   signal, not a defect. The ranking lines up with detection recall: stealthier ⇒ harder.
 
-`results/fidelity.png` overlays the mimicry vector on legitimate traffic. Base data is
-generated; swap in real PaySim / IEEE-CIS and every number becomes a real-data report.
+`results/fidelity.png` overlays the mimicry vector on 590,540 real IEEE-CIS transactions.
+Every distance on this page is a distance from real legitimate traffic — see
+[Data](#data--real-not-invented).
 
 ## Mitigation — detect, flag, **and mitigate**
 

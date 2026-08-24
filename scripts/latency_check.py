@@ -86,7 +86,7 @@ def main() -> None:
 
     live = df[(df.batch == 1) & (df.stage == "FULL PATH (score -> action)")].iloc[0]
     bulk = df[(df.batch == 10_000) & (df.stage == "FULL PATH (score -> action)")].iloc[0]
-    print(f"\n=== live authorization, one transaction at a time ===")
+    print("\n=== live authorization, one transaction at a time ===")
     print(f"  full path p50 {live.p50_ms:.3f} ms | p95 {live.p95_ms:.3f} ms | p99 {live.p99_ms:.3f} ms")
     headroom = AUTH_BUDGET_MS / live.p99_ms
     print(f"  against a {AUTH_BUDGET_MS:.0f}ms risk-decision budget: {headroom:.0f}x headroom at p99")

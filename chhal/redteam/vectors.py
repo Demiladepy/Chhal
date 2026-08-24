@@ -31,7 +31,6 @@ here, because they do not emit tabular features — see the strategy doc.
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 from .base import AttackVector
 from .campaign import TemporalProfile
@@ -140,7 +139,6 @@ class UpiCollectScam(AttackVector):
     )
 
     def static_features(self, n, rng):
-        p = self.p
         return {
             "is_new_beneficiary": np.ones(n, int),
             "is_cross_border": np.zeros(n, int),

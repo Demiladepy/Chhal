@@ -71,7 +71,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from chhal.behaviour import HOUR_OFFSET, derive, hour_of  # noqa: E402
+from chhal.behaviour import derive, hour_of  # noqa: E402
 from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN, LINKAGE_FEATURES  # noqa: E402
 
 # Expected shape of the genuine dataset — we refuse to proceed on anything else.

@@ -40,10 +40,8 @@ from enum import IntEnum
 from typing import Dict
 
 import numpy as np
-import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
-from .contract import FEATURE_COLUMNS
 
 
 class Action(IntEnum):
@@ -250,7 +248,3 @@ def threshold_baseline(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarray
     rep = pol.report(actions, y_true, amount)
     rep["threshold"] = threshold
     return rep
-
-
-def score_frame(detector, calib: Calibrator, df: pd.DataFrame) -> np.ndarray:
-    return calib(detector.score(df[FEATURE_COLUMNS]))

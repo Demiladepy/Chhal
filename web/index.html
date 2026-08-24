@@ -253,7 +253,7 @@
       <a class="btn" href="https://github.com/Demiladepy/Chhal" target="_blank" rel="noopener">View on GitHub ↗</a>
     </div>
     <div class="proof">
-      <span>Base: <b>PaySim / IEEE-CIS shape</b></span>
+      <span>Base: <b>590,540 real IEEE-CIS transactions</b></span>
       <span class="sep"></span>
       <span>Detector: <b>LightGBM + gain attribution</b></span>
       <span class="sep"></span>
@@ -267,8 +267,8 @@
   <div class="wrap">
     <div class="stats reveal">
       <div class="stat">
-        <div class="num" data-to="87" data-suffix="%">0%</div>
-        <div class="lbl">Benchmark recall after the loop<br>(from ~0% on a static model)</div>
+        <div class="num" data-to="97" data-suffix="%">0%</div>
+        <div class="lbl">Benchmark recall after the loop, at 0.1% of real customers flagged<br>(from 0% on a static model)</div>
       </div>
       <div class="stat">
         <div class="num" data-to="100" data-suffix="%">0%</div>
@@ -358,7 +358,7 @@
       <div class="step reveal"><div class="idx">01 — IDENTIFY</div>
         <h3>Invent</h3><p>A taxonomy of where GenAI actually changes payment fraud. Four vectors are built as live code; the rest catalogued for breadth.</p></div>
       <div class="step reveal"><div class="idx">02 — GENERATE</div>
-        <h3>Render</h3><p>Attacks are emitted as transactions in the frozen feature space, anchored to a PaySim/IEEE-CIS-shaped base so they’re statistically plausible.</p></div>
+        <h3>Render</h3><p>Attacks are emitted as transactions in the frozen feature space, mounted on real never-fraudulent accounts whose issuer-side context they inherit — so they are plausible by construction, not by assertion.</p></div>
       <div class="step reveal"><div class="idx">03 — EVADE</div>
         <h3>Sharpen</h3><p>The constrained optimizer nudges attacker-controlled features to slip past the <em>current</em> model — without leaving the executable manifold.</p></div>
       <div class="step reveal"><div class="idx">04 — DEFEND</div>
@@ -389,7 +389,7 @@
       <div class="col good reveal">
         <h4>Chhal, closed loop</h4>
         <ul>
-          <li><span class="mk">✓</span> Benchmark recall climbs from ~0% to ~87% on attacks the model never trained on.</li>
+          <li><span class="mk">✓</span> Benchmark recall climbs from 0% to 97% on attacks the model never trained on, at a 0.1% false-positive budget.</li>
           <li><span class="mk">✓</span> Each gap the red team finds becomes the next training signal — the target moves.</li>
           <li><span class="mk">✓</span> Fidelity is a number: on-manifold rate and per-vector KS versus real traffic.</li>
           <li><span class="mk">✓</span> A frozen held-out split proves generalisation, not memorisation. No leakage.</li>
@@ -417,26 +417,26 @@
           <tr class="hero-row">
             <td class="vname">threshold_hugging</td>
             <td>Sequences tuned just under every velocity/amount rule, mimicking the victim</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:67%"></span></span>67%</div></td>
-            <td>0.27</td><td><span class="tag stealth">stealthiest</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:89%"></span></span>89%</div></td>
+            <td>0.22</td><td><span class="tag stealth">stealthiest</span></td>
           </tr>
           <tr>
             <td class="vname">upi_collect</td>
             <td>🇮🇳 Fraudulent UPI collect-request, then rapid drain through fresh VPAs</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:85%"></span></span>85%</div></td>
-            <td>0.35</td><td><span class="tag">social-eng</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:99%"></span></span>99%</div></td>
+            <td>0.23</td><td><span class="tag">social-eng</span></td>
           </tr>
           <tr>
             <td class="vname">bustout</td>
             <td>Synthetic identity ages a clean account, then maxes it in a burst</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:97%"></span></span>97%</div></td>
-            <td>0.42</td><td><span class="tag">overt</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:100%"></span></span>100%</div></td>
+            <td>0.27</td><td><span class="tag">overt</span></td>
           </tr>
           <tr>
             <td class="vname">card_testing</td>
             <td>Agentic BIN probing, sized to stay under velocity limits</td>
             <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:100%"></span></span>100%</div></td>
-            <td>0.47</td><td><span class="tag">overt</span></td>
+            <td>0.29</td><td><span class="tag">overt</span></td>
           </tr>
         </tbody>
       </table>
@@ -458,7 +458,7 @@
     <div class="chart-grid">
       <div class="reveal">
         <svg class="loopfig" viewBox="0 0 560 340" role="img" style="padding:8px"
-             aria-label="Held-out F1 over loop iterations: a blue benchmark line rising and holding near the top, an amber pressure line staying volatile below.">
+             aria-label="Held-out recall at a 0.1% false-positive budget over loop iterations: a blue benchmark line rising and holding near the top, an amber pressure line staying volatile below.">
           <!-- axes -->
           <line x1="56" y1="28" x2="56" y2="286" stroke="#333" stroke-width="1"/>
           <line x1="56" y1="286" x2="528" y2="286" stroke="#333" stroke-width="1"/>
@@ -469,7 +469,7 @@
             <text x="56" y="304">0</text>
             <text x="286" y="304" text-anchor="middle">iteration →</text>
             <text x="528" y="304" text-anchor="end">8</text>
-            <text x="60" y="20" fill="#8a8a8a">F1 · held-out novel attacks</text>
+            <text x="60" y="20" fill="#8a8a8a">recall @ 0.1% FPR · held-out novel attacks</text>
           </g>
           <!-- gridlines -->
           <g stroke="#151515" stroke-width="1">

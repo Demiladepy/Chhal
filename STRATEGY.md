@@ -1,5 +1,18 @@
 # Chhal — a closed-loop adversarial engine for GenAI payment fraud
 
+> **Status: this is the pre-build plan, kept for the reasoning. It is no longer the source
+> of truth for what exists.** Where this file and [`README.md`](README.md) disagree, the
+> README is right — it describes the system as built and every number in it comes from a
+> run in `results/`.
+>
+> Superseded here: the base distribution is **real IEEE-CIS**, not PaySim; attacks are
+> **campaigns mounted on real accounts**, not generated rows; results are quoted at a
+> **fixed false-positive budget**, not F1 at 0.5; the two-week plan and two-person split
+> are spent. Still live and still worth reading: **Pillar 1 — IDENTIFY** (the vector
+> catalog is genuinely unfinished), **Anti-patterns that would sink us**, and **How it
+> scores on every judged criterion**.
+
+
 **Mastercard Innovation Challenge @ GFF 2026 · AI Defense Lab for Payment Security**
 **Team:** Demilade + Akshat (2) · **Submission deadline:** 31 Aug 2026
 
@@ -86,6 +99,10 @@ Lock these two structs and the field lists on day 1. Everything else can change.
 
 ## Pillar 1 — IDENTIFY  (breadth = points; catalog ~15, build ~4)
 
+**STILL OPEN.** Four vectors are built. The brief asks for breadth "rather than a narrow
+handful", and four is a narrow handful. This is the weakest pillar and the catalog is the
+remaining work.
+
 A taxonomy of where **GenAI specifically** changes payment fraud. Full list goes in the
 write-up (scores "diversity of attacks"); we implement the starred ones.
 
@@ -137,7 +154,7 @@ Kaggle-credit-card solution. Cheap to do, high-signal to these judges.
 
 ## Pillar 2 — GENERATE  (fidelity is judged → anchor to real data, never invent from scratch)
 
-- **Base distribution:** **PaySim** (agent-based mobile-money simulator — perfect thematic
+- **Base distribution:** ~~PaySim~~ → **built on real IEEE-CIS** (see README). Original reasoning: PaySim (agent-based mobile-money simulator — perfect thematic
   fit) and/or **IEEE-CIS Fraud Detection** (rich real features). We match amount, timing,
   merchant-category, and velocity distributions so injected fraud is statistically plausible.
 - **Attack layer (LLM agents):** produce the *storyline* (phishing text, voice script,
@@ -221,7 +238,7 @@ it doesn't compute them live.
 | Criterion | How we win it |
 |---|---|
 | Diversity of attacks | ~15-vector GenAI taxonomy, live-loop vs showcase clearly split, India rails included |
-| Fidelity of simulation | PaySim/IEEE-CIS base + distribution-match evidence (KS-test) + plausibility-constrained attacks |
+| Fidelity of simulation | Real IEEE-CIS base + distribution-match evidence (KS-test) + plausibility-constrained attacks mounted on real accounts |
 | Detection efficacy | LightGBM + gain-based feature importance; F1/AUC/FP reported per iteration on **held-out novel attacks** |
 | Novelty | the **closed adaptive loop** + constrained evasion optimizer + agentic red team + UPI grounding |
 | Real-world feasibility | deployable detector, attacks constrained to executable manifold, live UPI/RTP framing, streaming demo |

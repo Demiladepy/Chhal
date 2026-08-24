@@ -45,14 +45,35 @@ st.caption(
     "— generalisation, not memorisation."
 )
 
-# headline metrics
+# Headline metrics, read at the operating point a payments team would actually run —
+# a fixed share of real legitimate traffic flagged, not an arbitrary 0.5 threshold.
+PRIMARY = "recall_at_fpr=0.001"
+op = summary["operating_points"][PRIMARY]
+
+src = summary.get("data_source", "unknown")
+if src == "ieee":
+    st.success(f"Measured on **{summary['train_rows'] + summary['test_rows']:,} real "
+               f"IEEE-CIS card transactions** (temporal split, "
+               f"{summary['train_rows']:,} train / {summary['test_rows']:,} test).")
+else:
+    st.warning(f"Running on the **{src}** fallback — these numbers must not be quoted. "
+               f"Run `python scripts/prepare_ieee.py` for the real base population.")
+
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Static detector vs adaptive attacks", f"{summary['baseline_benchmark_recall']:.1%}",
-          help="Baseline recall on the fixed adversarial benchmark — attacks optimised to evade it.")
-c2.metric("After the loop (benchmark recall)", f"{summary['final_benchmark_recall']:.1%}",
-          delta=f"{summary['final_benchmark_recall'] - summary['baseline_benchmark_recall']:+.1%}")
-c3.metric("Final benchmark F1", f"{summary['final_benchmark_f1']:.3f}")
-c4.metric("FP rate on legit", f"{summary['final_fp_rate_on_legit']:.2%}")
+c1.metric("Static detector vs adaptive attacks", f"{op['baseline']:.1%}",
+          help="Baseline recall on the fixed adversarial benchmark — the attacks were "
+               "optimised to evade exactly this detector, so near-zero is the optimizer "
+               "working, not a broken model.")
+c2.metric("After the loop", f"{op['final']:.1%}",
+          delta=f"{op['final'] - op['baseline']:+.1%}",
+          help="Recall on the same fixed benchmark, at a 0.1% false-positive budget.")
+c3.metric("PR AUC", f"{summary['final_pr_auc']:.3f}",
+          help="Average precision — the honest summary under 3.5% fraud prevalence. "
+               f"ROC AUC reads {summary['naive_threshold_0.5']['final_roc_auc']:.4f} on the "
+               "same run and says almost nothing.")
+c4.metric("Alert rate", f"{summary['final_alert_rate']:.2%}",
+          help="Share of ALL traffic flagged at that operating point — the number that "
+               "decides whether the queue behind it is staffable.")
 
 left, center, right = st.columns([1, 1.1, 1.3])
 
@@ -85,7 +106,8 @@ with center:
         xaxis_title="caught", xaxis_range=[0, 1], height=340, margin=dict(l=10, r=10),
     )
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Threshold-hugging (the hero vector) stays the hardest to catch — it "
+    st.caption("Recall per vector at the same 0.1% false-positive budget. "
+               "Threshold-hugging (the hero vector) stays the hardest to catch — it "
                "mimics normal behaviour, so it sits lowest even after the loop learns.")
 
 # ---- RIGHT: Blue Team — the money chart ------------------------------------
@@ -94,15 +116,19 @@ with right:
     bench = curve[curve["phase"] == "benchmark"]
     pressure = curve[curve["phase"] == "pressure"]
     fig = go.Figure()
+    # Recall at a fixed false-positive budget, not F1 at a 0.5 cutoff. No payments system
+    # is tuned the way F1 assumes, and the write-up tells judges to distrust that number —
+    # the demo has to show the same metric the claims are made in.
+    METRIC = "recall_at_fpr_0.001"
     fig.add_trace(go.Scatter(
-        x=bench["iteration"], y=bench["f1"], name="blue generalisation (fixed benchmark)",
+        x=bench["iteration"], y=bench[METRIC], name="blue generalisation (fixed benchmark)",
         mode="lines+markers", line=dict(color="#2980b9", width=3)))
     fig.add_trace(go.Scatter(
-        x=pressure["iteration"], y=pressure["f1"], name="red pressure (newest evasion)",
+        x=pressure["iteration"], y=pressure[METRIC], name="red pressure (newest evasion)",
         mode="lines+markers", line=dict(color="#e67e22", dash="dot")))
     fig.update_layout(
-        title="Held-out F1 over loop iterations",
-        xaxis_title="iteration", yaxis_title="F1 (novel held-out attacks)",
+        title="Recall on held-out attacks, at 0.1% of real customers flagged",
+        xaxis_title="iteration", yaxis_title="recall @ 0.1% FPR",
         yaxis_range=[0, 1.02], height=340, legend=dict(y=-0.35), margin=dict(l=10, r=10),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -132,10 +158,12 @@ fid = summary.get("fidelity", {})
 if fid:
     f1, f2, f3 = st.columns(3)
     f1.metric("On-manifold rate", f"{fid['on_manifold_rate']:.1%}",
-              help="Share of fully-optimised attack feature values still inside the realistic "
+              help="Share of ATTACKER-CONTROLLED feature values still inside the realistic "
                    "manifold bounds. Every candidate is hard-clipped to these exact bounds, so "
                    "this is ~100% by construction — it proves the clip is wired correctly, not "
-                   "that the guardrail did meaningful work. See 'guardrail binding rate' for that.")
+                   "that the guardrail did meaningful work. See 'guardrail binding rate' for "
+                   "that. The rest of an attack row is inherited from a real account or derived "
+                   "from a real timeline, so it needs no plausibility check.")
     if "frac_off_manifold_pre_clip" in fid:
         f2.metric("Guardrail binding rate", f"{fid['frac_off_manifold_pre_clip']:.1%}",
                   help="Share of proposed perturbations that landed outside the manifold "
@@ -160,5 +188,6 @@ with fcol2:
                    "signal, not a defect).")
         st.dataframe(fidelity.round(3), height=240, use_container_width=True)
 
-st.caption("Base data is generated (see `chhal/data.py`); point it at real PaySim / "
-           "IEEE-CIS features and every fidelity number becomes a real-data report.")
+st.caption("Distances are measured against real IEEE-CIS legitimate traffic, and each attack "
+           "is mounted on a real, never-fraudulent account whose issuer-side context it "
+           "inherits rather than invents (see `chhal/redteam/hosts.py`).")
