@@ -94,6 +94,7 @@ python scripts/run_loop.py            # full 8-iteration run -> results/  (~85s 
 
 python scripts/generalisation_check.py  # leave-one-vector-out: recall on an UNSEEN family
 python scripts/mitigation_report.py     # score -> action -> money
+python scripts/ensemble_check.py        # does a second detector arm earn its place?
 
 streamlit run dashboard/app.py        # the 3-panel live demo (replays results/)
 python -m pytest tests/ -q            # contract, optimizer, loop, fidelity, mitigation
@@ -231,6 +232,39 @@ layer is what partially rescues it — 68.8% of real fraud still gets stopped or
 challenged, because a cheap OTP is worth issuing on a weak signal even when an outright
 decline is not.
 
+## A second arm — and an honest negative result
+
+The supervised detector has a blind spot no amount of retraining removes: it can only
+recognise what it has been shown, and the brief is about *emerging* attacks. So we added
+an **anomaly arm** — an isolation forest trained on legitimate traffic only, which never
+sees a fraud label and answers a different question: how unlike normal traffic is this?
+
+Then we measured it (`scripts/ensemble_check.py`), leave-one-vector-out, at a fixed 0.1%
+false-positive budget:
+
+| variant | unseen attack family | real IEEE-CIS fraud |
+|---|---|---|
+| supervised only | 0.8945 | 0.0270 |
+| **max fusion** (either arm flags) | **0.8870** ✗ | **0.0192** ✗ |
+| **stacked** (anomaly score as a feature) | **0.9050** ✓ | 0.0274 |
+
+**The anomaly arm alone scores 0.001 on unseen attacks and 0.000 on real fraud.** Fusing
+it by `max` is actively worse than not having it — it spends part of the false-positive
+budget on an arm that carries 0.1% of the catches. Only stacking its score as an input
+*feature* helps, +1.05 points on an unseen family, and almost all of that is one vector
+(`bustout`, 0.750 → 0.802).
+
+The reason is our own doing, and it is the interesting part. Attack rows are drawn
+through the inverse CDF of real legitimate traffic and then clipped to the plausibility
+manifold — they are on-manifold **by construction**, because that is precisely what the
+fidelity guardrail guarantees. A detector whose whole question is "is this off-manifold?"
+cannot see them. **The better the fidelity claim gets, the less an outlier detector can
+contribute.** `test_anomaly_arm_is_blind_to_on_manifold_attacks` locks that in.
+
+`StackedDetector` exposes the same surface as `Detector`, so the loop, evaluation and the
+mitigation policy take it unchanged. The anomaly score is an issuer-side signal computed
+at scoring time, not something an attacker sets, so `FEATURE_COLUMNS` stays frozen.
+
 ## Repository layout
 
 ```
@@ -243,11 +277,13 @@ chhal/
   evaluation.py    # held-out split protocol + metrics
   fidelity.py      # KS-tests + on-manifold rate — fidelity as a metric, not a claim
   mitigation.py    # calibration + expected-cost action policy — the "mitigate" pillar
+  ensemble.py      # anomaly arm + StackedDetector; see the negative result above
   loop.py          # orchestration -> the arms-race curve
 scripts/prepare_ieee.py          # one-time: raw IEEE-CIS -> derived FEATURE_COLUMNS
 scripts/run_loop.py              # run the loop, write results/
 scripts/generalisation_check.py  # leave-one-vector-out recall on an unseen attack family
 scripts/mitigation_report.py     # calibrate, decide, price the policies
+scripts/ensemble_check.py        # supervised vs max-fusion vs stacked, leave-one-out
 dashboard/app.py                 # 3-panel Streamlit demo (replays results/)
 tests/                           # contract, optimizer, loop, fidelity, mitigation
 ```

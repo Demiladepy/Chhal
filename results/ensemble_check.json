@@ -1,0 +1,61 @@
+{
+  "fpr": 0.001,
+  "per_vector": [
+    {
+      "held_out_vector": "threshold_hugging",
+      "unseen_supervised": 0.874,
+      "real_supervised": 0.0259,
+      "unseen_max_fusion": 0.864,
+      "real_max_fusion": 0.0198,
+      "unseen_stacked": 0.864,
+      "real_stacked": 0.0237
+    },
+    {
+      "held_out_vector": "bustout",
+      "unseen_supervised": 0.75,
+      "real_supervised": 0.0284,
+      "unseen_max_fusion": 0.736,
+      "real_max_fusion": 0.0196,
+      "unseen_stacked": 0.802,
+      "real_stacked": 0.0298
+    },
+    {
+      "held_out_vector": "card_testing",
+      "unseen_supervised": 0.974,
+      "real_supervised": 0.0261,
+      "unseen_max_fusion": 0.972,
+      "real_max_fusion": 0.0208,
+      "unseen_stacked": 0.976,
+      "real_stacked": 0.0282
+    },
+    {
+      "held_out_vector": "upi_collect",
+      "unseen_supervised": 0.98,
+      "real_supervised": 0.0278,
+      "unseen_max_fusion": 0.976,
+      "real_max_fusion": 0.0165,
+      "unseen_stacked": 0.978,
+      "real_stacked": 0.028
+    }
+  ],
+  "means": {
+    "supervised": {
+      "unseen": 0.8945,
+      "real_fraud": 0.027
+    },
+    "max_fusion": {
+      "unseen": 0.887,
+      "real_fraud": 0.0192
+    },
+    "stacked": {
+      "unseen": 0.905,
+      "real_fraud": 0.0274
+    }
+  },
+  "anomaly_alone": {
+    "unseen": 0.001,
+    "real_fraud": 0.0
+  },
+  "anomaly_carried_share": 0.0014,
+  "verdict": "max fusion -0.0075 on an unseen family \u2014 rejected, it spends budget on an arm carrying 0.1% of catches. Stacking the anomaly score as a FEATURE is +0.0105 and is the variant to ship. The arm is near-useless alone because attacks are on-manifold by construction \u2014 the fidelity guardrail blinds it."
+}
