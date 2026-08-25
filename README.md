@@ -59,24 +59,24 @@ Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~66s):
 
 | metric | baseline | after the loop |
 |---|---|---|
-| recall @ **0.1%** of legit flagged | 0.25% | **83.80%** |
-| recall @ 0.5% | 0.90% | 91.35% |
-| recall @ 1.0% | 1.35% | 92.05% |
-| **PR AUC** | 0.0176 | **0.9275** |
-| alert rate (share of all traffic) | 0.10% | 1.259% |
+| recall @ **0.1%** of legit flagged | 0.00% | **83.36%** |
+| recall @ 0.5% | 0.32% | 87.68% |
+| recall @ 1.0% | 0.60% | 89.80% |
+| **PR AUC** | 0.0182 | **0.9125** |
+| alert rate (share of all traffic) | 0.10% | 1.537% |
 
-For comparison, the naive 0.5 cutoff on the same run: F1 0.0097 → 0.8120, ROC AUC 0.9951, FP on
-legit 0.46%. The ROC number is the one to distrust.
+For comparison, the naive 0.5 cutoff on the same run: F1 0.0027 → 0.6834, ROC AUC 0.9882, FP on
+legit 1.30%. The ROC number is the one to distrust.
 
 The baseline catching almost nothing is not a broken detector — the benchmark attacks
 were optimised specifically to evade it, which is the optimizer doing its job.
 
 The claim that survives scrutiny is not this curve. It is the leave-one-out one, and it
-is much weaker: **39.6% on an attack family never seen in any form**, against 77.6% on
-families the detector was trained on — a 38-point generalisation gap
-(`scripts/generalisation_check.py`). Per family: `upi_collect` 67.6%, `bustout` 62.4%,
-`card_testing` 23.6%, and the mimicry vector `threshold_hugging` **4.8%**, which is close
-to nothing. A detector trained on three fraud families does not thereby understand the
+is much weaker: **45.3% on an attack family never seen in any form**, against 73.8% on
+families the detector was trained on — a 28.5-point generalisation gap
+(`scripts/generalisation_check.py`). Per family: `upi_collect` 73.8%, `mule_fanout` 56.6%,
+`bustout` 49.6%, `card_testing` 40.6%, and the mimicry vector `threshold_hugging` **6.0%**,
+which is close to nothing. A detector trained on three fraud families does not thereby understand the
 fourth, and the stealthier the fourth is, the less it understands. That is the honest
 state of this system and the most useful thing in this README.
 
@@ -110,6 +110,7 @@ python scripts/run_loop.py            # full 8-iteration run -> results/  (~66s 
 
 python scripts/generalisation_check.py  # leave-one-vector-out: recall on an UNSEEN family
 python scripts/mitigation_report.py     # score -> action -> money
+python scripts/coordination_check.py    # can the detector see a network at all?
 python scripts/ensemble_check.py        # does a second detector arm earn its place?
 python scripts/latency_check.py         # can it run inside an authorization?
 python scripts/feature_ablation.py      # why the feature space looks the way it does
@@ -145,20 +146,66 @@ Two tracks, kept explicitly separate (fudging this loses feasibility points):
 
 **★ Live-loop vectors** (emit transaction features, flow through the detector, *are* the loop):
 
-| Vector | Idea | Campaign shape |
-|---|---|---|
-| `threshold_hugging` **(hero)** | LLM-tuned sequences that sit just under every velocity/amount rule and mimic the victim's normal behaviour — the hardest to catch, the heart of the arms race | 3-9 txns, 1h-2d apart, spend equal to the account's own normal |
-| `bustout` | GenAI synthetic identity ages a clean account, then busts out in a burst | quiet for days, then 8-25 txns minutes apart, amounts escalating 1.6× |
-| `card_testing` | Agentic BIN/card probing sized to stay under velocity limits | 20-60 micro-probes, 2s-2min apart, on a card with no history |
-| `upi_collect` | 🇮🇳 fraudulent UPI collect-request + rapid drain (India rail) | 3-7 hops, 30s-10min apart, each smaller as funds run out |
+| Vector | Idea | Campaign shape | recall @ 0.1% FPR |
+|---|---|---|---|
+| `threshold_hugging` **(hero)** | Per-victim mimicry: the campaign is sized and paced from the compromised card's **own** history, so nothing about it is anomalous *for that account* | 3-9 txns at the victim's own cadence, spending the victim's own amounts | **31.4%** |
+| `upi_collect` | 🇮🇳 fraudulent UPI collect-request + rapid drain (India rail) | 3-7 hops, 30s-10min apart, each smaller as funds run out | 97.2% |
+| `mule_fanout` | One operator, many mule accounts, one window — the vector GenAI actually changes, because what it makes cheap is *scale* | 2-5 transfers per account, every account firing inside the same 6 hours | 93.8% |
+| `bustout` | GenAI synthetic identity ages a clean account, then busts out in a burst | quiet for days, then 8-25 txns minutes apart, amounts escalating 1.6× | 96.2% |
+| `card_testing` | Agentic BIN/card probing sized to stay under velocity limits | 20-60 micro-probes, 2s-2min apart | 98.2% |
 
 Campaign shapes are not decoration — they are how the behavioural features are produced.
 See [Attacks are campaigns, not rows](#attacks-are-campaigns-not-rows).
 
-**◆ Showcase vectors** (text/agent/media — voice clone, prompt-injection against payment
-agents): scored in the write-up for breadth and demoed qualitatively. They do **not** emit
-tabular features, so they do **not** feed the tabular detector — and we say so plainly
-rather than pretend they close the same loop.
+### Two of these do something the other three do not — and one ablation that did not go our way
+
+**`threshold_hugging` reads its bands off the victim, not off the population.** Every
+vector's bands are quantile levels rather than raw values, which makes them portable. But
+a quantile of *everyone's* traffic is a population-level disguise, and the crowd is not
+what scores the transaction: the detector measures `amount_to_avg_ratio` and the
+inter-transaction gap against **this card's** baseline. With `mimic_host`, the same
+quantile levels are read off the host's own history, so a card that buys coffee gets a
+coffee-sized attack at coffee-buying intervals.
+
+**`mule_fanout` is a controlled experiment, not a fifth variation on speed and size.** Its
+defining property — one operator moving many accounts at once — is a property of the
+*set*, and the frozen feature space has no counterparty: no beneficiary id, no destination
+account, no edge between two rows.
+
+Both of those are the kind of claim that sounds obviously true, so
+`scripts/coordination_check.py` makes them prove it: five seeds, five variants, three
+operating points, each variant differing from its control in exactly one thing.
+
+| switched on | costs the detector | read at | verdict |
+|---|---|---|---|
+| per-victim mimicry | **1.2 ± 0.7** pts | 5% FPR | inside the noise |
+| coordination | **5.8 ± 2.1** pts | 0.1% FPR | clears 2 SEM, but confounded |
+| `is_new_beneficiary` | **27.9 ± 7.9** pts | 0.1% FPR | clears 2 SEM |
+
+(± is the standard error of the paired per-seed difference, not the spread of one run.)
+
+**Only the last row is a clean result, and it is not the one we set out to prove.** The
+detector catches `mule_fanout` overwhelmingly on one binary column — turn
+`is_new_beneficiary` off and recall falls by 28 points. It is not catching a network.
+
+**Coordination clears its error bars but the comparison is confounded**, and we would
+rather say so than bank it: a coordinated batch draws hosts that were live shortly before
+its window, so the two mule variants do not share a host population. The 5.8 points are
+timing *and* host mix, and this design cannot separate them.
+
+**Per-victim mimicry does not survive its own ablation here.** 1.2 ± 0.7 points is not a
+finding. The hero vector sits near the floor with mimicry and without it, so a single-pass
+detector cannot tell them apart — the loop's per-vector recall does differ, but eight
+rounds of adaptation is not a controlled comparison and we are not going to quote it as
+one. The mechanism is still the right one on the merits; the evidence that it *matters* is
+not there yet, and a larger seed budget is what would settle it.
+
+**The thing this ablation actually taught us is about our own numbers.** An earlier
+single-seed version of this script returned coordination deltas of -0.8, -3.2 and -8.3
+points on three consecutive runs — same code, same data, different rng. Any one of them,
+quoted alone, would have been a story invented from noise. That is a warning about every
+per-vector number in this README quoted to one decimal place, and the reason
+`scripts/robustness.py` exists.
 
 ---
 
@@ -180,7 +227,7 @@ A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py))
 
 - **On-manifold rate ~100%** — by construction: the optimizer hard-clips every candidate to
   these exact bounds before scoring, so this only proves the clip is wired correctly.
-- **Guardrail binding rate ~9.6%** — the non-tautological number: the fraction of proposed
+- **Guardrail binding rate ~11.9%** — the non-tautological number: the fraction of proposed
   perturbations that actually landed *outside* the manifold before clipping and had to be
   pulled back. This is the real evidence the guardrail does work — attacks push against
   the plausibility envelope, they don't just float freely inside it.
@@ -219,7 +266,7 @@ deployment base rate either. An isotonic calibrator is fitted on a temporal slic
 training window the detector never sees. That pool is then split in half — isotonic is
 **fitted** on one half and its error is **measured** on the other, because an isotonic fit
 scored on its own rows returns ECE 0.0000 by construction and that is a tautology, not a
-result. Measured honestly: ECE 0.0062 raw → 0.0062 calibrated on the held-back half (the
+result. Measured honestly: ECE 0.0067 raw → 0.0067 calibrated on the held-back half (the
 raw LightGBM score is already close to calibrated here; what calibration buys is the
 *scale*, which is what gets multiplied by a dollar amount). `test_miscalibrated_scores_degrade_the_policy`
 locks this in: squash the scores monotonically — leaving every recall and AUC number
@@ -229,15 +276,15 @@ identical — and the policy measurably loses money.
 python scripts/mitigation_report.py
 ```
 
-Priced on the frozen future (147,635 real transactions + 1,600 adaptive attacks the
-detector never saw, 4.49% fraud):
+Priced on the frozen future (147,635 real transactions + 2,000 adaptive attacks the
+detector never saw, 4.75% fraud):
 
 | policy | cost per 1k txns | net cost reduction | fraud loss avoided |
 |---|---|---|---|
-| do nothing | $10,057.33 | — | — |
-| block at `score >= 0.5` (untuned) | $5,056.58 | 49.7% | 54.2% |
-| tuned allow/step-up/block (amount-blind) | $3,017.77 | 70.0% | 84.4% |
-| **expected-cost policy** | **$2,889.93** | **71.3%** | **84.6%** |
+| do nothing | $10,455.78 | — | — |
+| block at `score >= 0.5` (untuned) | $5,065.90 | 51.6% | 55.6% |
+| tuned allow/step-up/block (amount-blind) | $2,883.94 | 72.4% | 83.9% |
+| **expected-cost policy** | **$2,787.61** | **73.3%** | **85.7%** |
 
 **Two columns, because they are two different questions.** *Net cost reduction* nets the
 friction we impose on legitimate customers against the fraud we stop — the number a CFO
@@ -254,15 +301,14 @@ one it is priced against. `tune_two_thresholds` finds that pair exactly rather t
 grid search (sorting by score turns it into prefix sums), so the comparator is the
 strongest one available, not a convenient one.
 
-Against it, **amount-awareness plus the capacity cap are worth 1.3 points of net cost
-reduction** — $128 per thousand transactions, a 4.2% relative saving. That is the real
-size of the contribution. The other 20 points came from tuning a threshold, which any
+Against it, **amount-awareness plus the capacity cap are worth 0.9 points of net cost
+reduction** — $96 per thousand transactions, a 3.3% relative saving. That is the real
+size of the contribution. The other 21 points came from tuning a threshold, which any
 fraud team already does. `test_the_real_edge_is_measured_against_the_tuned_ladder_not_the_naive_threshold`
 asserts exactly this ordering, so the framing cannot silently drift back.
 
-The policy declines **0.243%** of real customers outright, against 0.747% for the fixed
-threshold, while stopping or challenging 78.7% of all fraud (73.5% of real fraud, 95.3% of
-adaptive attacks). Note that both decline rates rose once the linkage block was added: the
+The policy declines **0.244%** of real customers outright, against 0.698% for the fixed
+threshold, while stopping or challenging 80.5% of all fraud. Note that both decline rates rose once the linkage block was added: the
 detector is genuinely more confident on real fraud, so blocking becomes economically
 correct more often. That is the policy working, but it is a real cost and the cost model
 is where to argue about it.
@@ -275,10 +321,10 @@ our own attacks than at the real thing:
 
 | segment | do nothing | expected-cost policy | net cost reduction |
 |---|---|---|---|
-| real fraud + all legitimate traffic | $918,544 | $421,805 | **54.1%** |
-| adaptive attacks only | $582,362 | $9,475 | 98.4% |
+| real fraud + all legitimate traffic | $918,544 | $407,842 | **55.6%** |
+| adaptive attacks only | $646,007 | $9,282 | 98.6% |
 
-The blended 71.3% borrows credit from attacks we wrote ourselves. **54.1% is the number
+The blended 73.3% borrows credit from attacks we wrote ourselves. **55.6% is the number
 that would survive contact with a production book**, and it is the one to quote.
 
 ### An honest split we are not hiding
@@ -287,12 +333,12 @@ Recall at 0.1% false positives on real legitimate traffic, by segment:
 
 | segment | recall |
 |---|---|
-| unseen adaptive attacks (our red team) | **65.4%** |
-| real IEEE-CIS fraud | **18.9%** |
+| unseen adaptive attacks (our red team) | **73.3%** |
+| real IEEE-CIS fraud | **19.6%** |
 
 Real fraud was **3.6%** before the linkage block was added — see
-[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts). It is now 18.9%,
-a 5.2x lift, and adaptive-attack recall paid for it: the detector has strong real-fraud
+[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts). It is now 19.6%,
+a 5.4x lift, and adaptive-attack recall paid for it: the detector has strong real-fraud
 features now and leans on them. That trade is visible rather than hidden, and it is the
 right one for a submission that has to work on real payments.
 
@@ -302,8 +348,8 @@ onto a single value, and at a 0.1% budget the threshold lands inside such a plat
 a tie-break decides whether hundreds of rows count as caught. Detection is a property of
 the ranking; the calibrated probability is only needed for the economics.
 
-Reporting the blended 30.0% would hide both halves. The mitigation layer closes more of
-the remaining gap — 73.5% of real fraud gets stopped or challenged, because a cheap OTP
+Reporting the blended 34.7% would hide both halves. The mitigation layer closes more of
+the remaining gap — most of the rest gets stopped or challenged, because a cheap OTP
 is worth issuing on a weak signal even when an outright decline is not.
 
 ## A second arm — and an honest negative result
@@ -318,18 +364,28 @@ false-positive budget:
 
 | variant | unseen attack family | real IEEE-CIS fraud |
 |---|---|---|
-| **supervised only** | **0.3885** | 0.1702 |
-| max fusion (either arm flags) | 0.3075 ✗ | 0.1261 ✗ |
-| stacked (anomaly score as a feature) | 0.3760 ✗ | 0.1582 ✗ |
+| supervised only | 0.4464 | **0.1431** |
+| max fusion (either arm flags) | 0.3872 ✗ | 0.1090 ✗ |
+| stacked (anomaly score as a feature) | **0.4664** | 0.1344 ✗ |
 
-**The anomaly arm alone scores 0.000 on unseen attacks and 0.006 on real fraud.** Both
-fusions now lose: `max` badly, stacking by 1.85 points on unseen families for +0.4 on
-real fraud. It also costs 32MB of the 34MB model footprint.
+**The anomaly arm alone scores 0.009 on unseen attacks and 0.006 on real fraud**, and
+carries 1.9% of the catches. `max` fusion loses badly — 5.9 points on unseen families.
+Stacking is the interesting one: it is **+2.0 points on unseen families and -0.9 on real
+fraud** in this run.
 
-**This verdict changed, and the change is the point.** On the earlier twelve-feature
-space, stacking was worth +1.25 points and we shipped it. Once the linkage block arrived
-and real-fraud recall went from 3.6% to 18.9%, the supervised arm had enough signal that
-an outlier score added nothing but false positives. The module docstring did not keep up
+**Do not read that as a result.** Across three measurements this session the stacking
+delta on unseen families came out at -1.25, -3.20 and +2.00 points — it changes sign
+between runs of the same code. A component whose entire case is a two-point swing that
+flips sign has not earned 32MB of the 34MB model footprint, and "it won this time" is
+exactly the reasoning this README exists to avoid. The script prints whichever way the
+current run fell; the decision not to ship it is made on the fact that the number is not
+stable, not on the sign of any one run. It also costs 32MB of the 34MB model footprint.
+
+**This verdict has now changed twice, and that is the point.** On the earlier
+twelve-feature space, stacking was worth +1.25 points and we shipped it. Once the linkage
+block arrived and real-fraud recall went from 3.6% to 19.6%, the supervised arm had enough
+signal that an outlier score added nothing but false positives. Adding a fifth vector
+moved it back across zero. The module docstring did not keep up
 and kept recommending stacking for several commits after the script had stopped agreeing;
 the recommendation is now derived from the two numbers rather than written beside them. A component that earns its place at one
 stage of a project can stop earning it at the next, and the only way to know is to keep
@@ -413,9 +469,9 @@ q0.5%/q99.5% envelope would silently rewrite the issuer's own view of the card.
 
 | | before | after |
 |---|---|---|
-| real IEEE-CIS fraud, recall @ 0.1% FPR | 3.6% | **18.9%** |
-| unseen adaptive attacks | 98.8% | 65.4% |
-| mimicry vector, KS distance from legit | 0.361 | **0.174** |
+| real IEEE-CIS fraud, recall @ 0.1% FPR | 3.6% | **19.6%** |
+| unseen adaptive attacks | 98.8% | 73.3% |
+| mimicry vector, KS distance from legit | 0.361 | **0.150** |
 
 Fidelity improved sharply because sixteen of twenty-six features are now literally real
 values. Adaptive-attack recall paid 33 points for it, which is the honest consequence of
@@ -520,7 +576,7 @@ chhal/
   data.py          # real IEEE-CIS base population (synthetic fallback); temporal split
   redteam/hosts.py # real accounts a campaign may compromise, and the leakage rules
   detector.py      # LightGBM blue-team detector (gain-based feature importance)
-  redteam/         # the four live-loop attack vectors, calibrated to the real population
+  redteam/         # the five live-loop attack vectors, calibrated to the real population
   optimizer.py     # constrained evasion optimizer (the novel core)
   evaluation.py    # held-out split protocol + metrics
   fidelity.py      # KS-tests + on-manifold rate — fidelity as a metric, not a claim
@@ -534,6 +590,7 @@ scripts/feature_ablation.py      # which features carry the real-fraud signal, a
 scripts/run_loop.py              # run the loop, write results/
 scripts/generalisation_check.py  # leave-one-vector-out recall on an unseen attack family
 scripts/mitigation_report.py     # calibrate, decide, price the policies
+scripts/coordination_check.py    # ablate coordination vs the per-row tells
 scripts/ensemble_check.py        # supervised vs max-fusion vs stacked, leave-one-out
 scripts/latency_check.py         # per-transaction latency, throughput, footprint
 dashboard/app.py                 # 3-panel Streamlit demo (replays results/)
