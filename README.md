@@ -216,7 +216,12 @@ is not deployable however good its economics look.
 It only works on **calibrated** probabilities. A raw gradient-boosting score is not
 P(fraud), and this pool has attacks injected so its implied base rate is not the
 deployment base rate either. An isotonic calibrator is fitted on a temporal slice of the
-training window the detector never sees (ECE 0.0087 → 0.0000). `test_miscalibrated_scores_degrade_the_policy`
+training window the detector never sees. That pool is then split in half — isotonic is
+**fitted** on one half and its error is **measured** on the other, because an isotonic fit
+scored on its own rows returns ECE 0.0000 by construction and that is a tautology, not a
+result. Measured honestly: ECE 0.0062 raw → 0.0062 calibrated on the held-back half (the
+raw LightGBM score is already close to calibrated here; what calibration buys is the
+*scale*, which is what gets multiplied by a dollar amount). `test_miscalibrated_scores_degrade_the_policy`
 locks this in: squash the scores monotonically — leaving every recall and AUC number
 identical — and the policy measurably loses money.
 
@@ -227,17 +232,54 @@ python scripts/mitigation_report.py
 Priced on the frozen future (147,635 real transactions + 1,600 adaptive attacks the
 detector never saw, 4.49% fraud):
 
-| policy | cost per 1k txns | loss avoided |
-|---|---|---|
-| do nothing | $8,171.74 | — |
-| block at `score >= 0.5` | $5,046.60 | 49.8% |
-| **expected-cost policy** | **$2,858.01** | **71.6%** |
+| policy | cost per 1k txns | net cost reduction | fraud loss avoided |
+|---|---|---|---|
+| do nothing | $10,057.33 | — | — |
+| block at `score >= 0.5` (untuned) | $5,056.58 | 49.7% | 54.2% |
+| tuned allow/step-up/block (amount-blind) | $3,017.77 | 70.0% | 84.4% |
+| **expected-cost policy** | **$2,889.93** | **71.3%** | **84.6%** |
 
-It declines **0.213%** of real customers outright, against 0.754% for the fixed
-threshold, while stopping or challenging 77.4% of all fraud. Note that both decline rates
-rose once the linkage block was added: the detector is genuinely more confident on real
-fraud, so blocking becomes economically correct more often. That is the policy working,
-but it is a real cost and the cost model is where to argue about it.
+**Two columns, because they are two different questions.** *Net cost reduction* nets the
+friction we impose on legitimate customers against the fraud we stop — the number a CFO
+signs off on. *Fraud loss avoided* ignores that friction and answers only how much of the
+money that would have walked out we kept. An earlier version of this table reported the
+first and labelled it the second.
+
+**And four rows, because three of them would have been a straw man.** Beating `score >= 0.5`
+is not evidence that expected-cost decisions work; it is evidence that 0.5 is a bad
+threshold, and nobody deploys an untuned one. The honest comparator is the best
+*amount-blind* ladder that exists — allow below one threshold, challenge between, block
+above — with both thresholds tuned on the same cost model, on a slice held back from the
+one it is priced against. `tune_two_thresholds` finds that pair exactly rather than by
+grid search (sorting by score turns it into prefix sums), so the comparator is the
+strongest one available, not a convenient one.
+
+Against it, **amount-awareness plus the capacity cap are worth 1.3 points of net cost
+reduction** — $128 per thousand transactions, a 4.2% relative saving. That is the real
+size of the contribution. The other 20 points came from tuning a threshold, which any
+fraud team already does. `test_the_real_edge_is_measured_against_the_tuned_ladder_not_the_naive_threshold`
+asserts exactly this ordering, so the framing cannot silently drift back.
+
+The policy declines **0.243%** of real customers outright, against 0.747% for the fixed
+threshold, while stopping or challenging 78.7% of all fraud (73.5% of real fraud, 95.3% of
+adaptive attacks). Note that both decline rates rose once the linkage block was added: the
+detector is genuinely more confident on real fraud, so blocking becomes economically
+correct more often. That is the policy working, but it is a real cost and the cost model
+is where to argue about it.
+
+### Whose fraud is being avoided
+
+Detection is reported per segment; the economics was not, and that hid something. A
+quarter of the cost denominator is fraud **we generated**, and the policy is far better at
+our own attacks than at the real thing:
+
+| segment | do nothing | expected-cost policy | net cost reduction |
+|---|---|---|---|
+| real fraud + all legitimate traffic | $918,544 | $421,805 | **54.1%** |
+| adaptive attacks only | $582,362 | $9,475 | 98.4% |
+
+The blended 71.3% borrows credit from attacks we wrote ourselves. **54.1% is the number
+that would survive contact with a production book**, and it is the one to quote.
 
 ### An honest split we are not hiding
 
@@ -245,17 +287,23 @@ Recall at 0.1% false positives on real legitimate traffic, by segment:
 
 | segment | recall |
 |---|---|
-| unseen adaptive attacks (our red team) | **67.8%** |
-| real IEEE-CIS fraud | **20.5%** |
+| unseen adaptive attacks (our red team) | **65.4%** |
+| real IEEE-CIS fraud | **18.9%** |
 
 Real fraud was **3.6%** before the linkage block was added — see
-[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts). It is now 20.5%,
-a 5.5x lift, and adaptive-attack recall paid 4.5 points for it: the detector has strong
-real-fraud features now and leans on them. That trade is visible rather than hidden, and
-it is the right one for a submission that has to work on real payments.
+[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts). It is now 18.9%,
+a 5.2x lift, and adaptive-attack recall paid for it: the detector has strong real-fraud
+features now and leans on them. That trade is visible rather than hidden, and it is the
+right one for a submission that has to work on real payments.
 
-Reporting the blended 37.7% would hide both halves. The mitigation layer closes more of
-the remaining gap — 70.6% of real fraud gets stopped or challenged, because a cheap OTP
+These are thresholded on the **raw** detector score, not the calibrated one. Calibration
+is monotone so it cannot change the ranking — but isotonic collapses long runs of scores
+onto a single value, and at a 0.1% budget the threshold lands inside such a plateau, where
+a tie-break decides whether hundreds of rows count as caught. Detection is a property of
+the ranking; the calibrated probability is only needed for the economics.
+
+Reporting the blended 30.0% would hide both halves. The mitigation layer closes more of
+the remaining gap — 73.5% of real fraud gets stopped or challenged, because a cheap OTP
 is worth issuing on a weak signal even when an outright decline is not.
 
 ## A second arm — and an honest negative result
@@ -280,7 +328,7 @@ real fraud. It also costs 32MB of the 34MB model footprint.
 
 **This verdict changed, and the change is the point.** On the earlier twelve-feature
 space, stacking was worth +1.25 points and we shipped it. Once the linkage block arrived
-and real-fraud recall went from 3.6% to 20.5%, the supervised arm had enough signal that
+and real-fraud recall went from 3.6% to 18.9%, the supervised arm had enough signal that
 an outlier score added nothing but false positives. The module docstring did not keep up
 and kept recommending stacking for several commits after the script had stopped agreeing;
 the recommendation is now derived from the two numbers rather than written beside them. A component that earns its place at one
@@ -365,14 +413,16 @@ q0.5%/q99.5% envelope would silently rewrite the issuer's own view of the card.
 
 | | before | after |
 |---|---|---|
-| real IEEE-CIS fraud, recall @ 0.1% FPR | 3.6% | **20.5%** |
-| unseen adaptive attacks | 98.8% | 67.8% |
+| real IEEE-CIS fraud, recall @ 0.1% FPR | 3.6% | **18.9%** |
+| unseen adaptive attacks | 98.8% | 65.4% |
 | mimicry vector, KS distance from legit | 0.361 | **0.174** |
-| fraud loss avoided by the policy | 62.3% | **71.6%** |
 
 Fidelity improved sharply because sixteen of twenty-six features are now literally real
-values. Adaptive-attack recall paid 4.5 points, which is the honest consequence of the
-detector having real signal to lean on.
+values. Adaptive-attack recall paid 33 points for it, which is the honest consequence of
+the detector having real signal to lean on rather than an artefact of our own generator.
+The policy's economics are not in this table on purpose: the "after" side is measured
+under a corrected definition (net cost reduction, against a tuned comparator), so a
+before/after row would be comparing two different quantities.
 
 ### The limitation we are not hiding
 

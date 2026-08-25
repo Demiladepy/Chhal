@@ -267,19 +267,19 @@
   <div class="wrap">
     <div class="stats reveal">
       <div class="stat">
-        <div class="num" data-to="97" data-suffix="%">0%</div>
-        <div class="lbl">Benchmark recall after the loop, at 0.1% of real customers flagged<br>(from 0% on a static model)</div>
+        <div class="num" data-to="83.8" data-suffix="%" data-dec="1">0%</div>
+        <div class="lbl">Benchmark recall after the loop, at 0.1% of real customers flagged<br>(from 0.25% on a static model)</div>
       </div>
       <div class="stat">
         <div class="num" data-to="100" data-suffix="%">0%</div>
-        <div class="lbl">On-manifold rate — attacks stay executable after evasion</div>
+        <div class="lbl">On-manifold rate on attacker-controlled features — attacks stay executable after evasion</div>
       </div>
       <div class="stat">
-        <div class="num" data-to="31.5" data-suffix="%" data-dec="1">0%</div>
+        <div class="num" data-to="9.6" data-suffix="%" data-dec="1">0%</div>
         <div class="lbl">Guardrail binding rate — perturbations pulled back to plausibility</div>
       </div>
       <div class="stat">
-        <div class="num" data-to="1.4" data-suffix="%" data-dec="1">0%</div>
+        <div class="num" data-to="1.3" data-suffix="%" data-dec="1">0%</div>
         <div class="lbl">Alert rate — share of all traffic flagged at the 0.1% operating point</div>
       </div>
     </div>
@@ -389,7 +389,7 @@
       <div class="col good reveal">
         <h4>Chhal, closed loop</h4>
         <ul>
-          <li><span class="mk">✓</span> Benchmark recall climbs from 0% to 97% on attacks the model never trained on, at a 0.1% false-positive budget.</li>
+          <li><span class="mk">✓</span> Benchmark recall climbs from 0.25% to 83.8% on attacks the model never trained on, at a 0.1% false-positive budget.</li>
           <li><span class="mk">✓</span> Each gap the red team finds becomes the next training signal — the target moves.</li>
           <li><span class="mk">✓</span> Fidelity is a number: on-manifold rate and per-vector KS versus real traffic.</li>
           <li><span class="mk">✓</span> A frozen held-out split proves generalisation, not memorisation. No leakage.</li>
@@ -417,26 +417,26 @@
           <tr class="hero-row">
             <td class="vname">threshold_hugging</td>
             <td>Sequences tuned just under every velocity/amount rule, mimicking the victim</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:89%"></span></span>89%</div></td>
-            <td>0.22</td><td><span class="tag stealth">stealthiest</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:46%"></span></span>45.8%</div></td>
+            <td>0.17</td><td><span class="tag stealth">stealthiest</span></td>
           </tr>
           <tr>
             <td class="vname">upi_collect</td>
             <td>🇮🇳 Fraudulent UPI collect-request, then rapid drain through fresh VPAs</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:99%"></span></span>99%</div></td>
-            <td>0.23</td><td><span class="tag">social-eng</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:94%"></span></span>93.6%</div></td>
+            <td>0.21</td><td><span class="tag">social-eng</span></td>
           </tr>
           <tr>
             <td class="vname">bustout</td>
             <td>Synthetic identity ages a clean account, then maxes it in a burst</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:100%"></span></span>100%</div></td>
-            <td>0.27</td><td><span class="tag">overt</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:98%"></span></span>97.6%</div></td>
+            <td>0.30</td><td><span class="tag">overt</span></td>
           </tr>
           <tr>
             <td class="vname">card_testing</td>
             <td>Agentic BIN probing, sized to stay under velocity limits</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:100%"></span></span>100%</div></td>
-            <td>0.29</td><td><span class="tag">overt</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:98%"></span></span>98.2%</div></td>
+            <td>0.31</td><td><span class="tag">overt</span></td>
           </tr>
         </tbody>
       </table>
