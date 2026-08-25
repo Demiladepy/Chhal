@@ -11,7 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from chhal.mitigation import (Action, ActionPolicy, Calibrator, CostModel,  # noqa: E402
                               PolicyConfig, allow_all_baseline,
-                              calibration_error, threshold_baseline)
+                              calibration_error, fraud_loss_avoided,
+                              segment_costs, threshold_baseline,
+                              tune_two_thresholds, two_threshold_baseline)
 
 
 def test_calibrator_refuses_to_predict_before_fit():
@@ -114,3 +116,80 @@ def test_miscalibrated_scores_degrade_the_policy():
     misled = pol.report(pol.decide(squashed, amt), y, amt)["total_cost"]
 
     assert misled > honest, "under-confident scores should make the policy under-act"
+
+
+def test_the_tuned_ladder_is_the_best_threshold_pair_that_exists():
+    """The comparator has to be the strongest amount-blind policy, not a convenient one.
+
+    tune_two_thresholds claims a GLOBAL optimum via prefix sums rather than a grid search.
+    If that claim is wrong, some random pair of thresholds will beat it — so try many.
+    """
+    p, y, amt = _calibrated_population()
+    c = CostModel()
+    t_s, t_b = tune_two_thresholds(c, p, y, amt)
+    best = two_threshold_baseline(c, p, y, amt, t_s, t_b)["total_cost"]
+
+    rng = np.random.default_rng(11)
+    for _ in range(200):
+        a, b = np.sort(rng.choice(p, 2, replace=False))
+        rival = two_threshold_baseline(c, p, y, amt, float(a), float(b))["total_cost"]
+        assert rival >= best - 1e-6, f"({a}, {b}) beat the supposed optimum"
+
+
+def test_the_real_edge_is_measured_against_the_tuned_ladder_not_the_naive_threshold():
+    """The claim we are allowed to make.
+
+    Beating `score >= 0.5` is not evidence for expected-cost decisions; it is evidence
+    that 0.5 is a bad threshold. The policy must beat the best AMOUNT-BLIND ladder, and
+    the gap between the two is the honest size of the contribution.
+    """
+    p, y, amt = _calibrated_population()
+    c = CostModel()
+
+    naive = threshold_baseline(c, p, y, amt, 0.5)["total_cost"]
+    t_s, t_b = tune_two_thresholds(c, p, y, amt)
+    tuned = two_threshold_baseline(c, p, y, amt, t_s, t_b)["total_cost"]
+    pol = ActionPolicy(c, PolicyConfig(max_review_rate=0.005))
+    smart = pol.report(pol.decide(p, amt), y, amt)["total_cost"]
+
+    assert tuned < naive, "an untuned 0.5 cutoff is a straw man, and this proves it"
+    assert smart < tuned, "amount-awareness has to earn its place against a tuned ladder"
+    assert (naive - tuned) > (tuned - smart), (
+        "most of the headline saving comes from tuning the threshold, not from our "
+        "economics — if that ever stops being true, the README's framing is wrong")
+
+
+def test_fraud_loss_avoided_is_a_different_number_from_cost_reduction():
+    """Two true numbers, one label, was the bug. Blocking everything avoids essentially
+    all fraud loss while costing far more than doing nothing — so if the two measures
+    ever agree, one of them is not measuring what it says."""
+    p, y, amt = _calibrated_population()
+    c = CostModel()
+    block_all = np.full(len(y), int(Action.BLOCK))
+
+    avoided = fraud_loss_avoided(c, block_all, y, amt)
+    pol = ActionPolicy(c, PolicyConfig(max_review_rate=0.0))
+    cost = pol.realised_cost(block_all, y, amt).sum()
+    nothing = allow_all_baseline(c, y, amt)["total_cost"]
+
+    assert avoided > 0.99, "blocking everything does avoid the fraud loss"
+    assert cost > nothing, "...and is still worse than doing nothing, which is the point"
+
+
+def test_segment_costs_do_not_credit_real_fraud_with_attacks_we_wrote():
+    p, y, amt = _calibrated_population()
+    c = CostModel()
+    rng = np.random.default_rng(5)
+    is_adaptive = rng.random(len(y)) < 0.25
+    pol = ActionPolicy(c, PolicyConfig(max_review_rate=0.005))
+    actions = pol.decide(p, amt)
+
+    segs = segment_costs(c, actions, y, amt, is_adaptive)
+    fraud = y == 1
+    total_exposure = c.fraud_loss(amt[fraud]).sum()
+
+    assert (segs["real_fraud_and_legit"]["n"] + segs["adaptive_attacks_only"]["n"]
+            == len(y)), "the two priced segments must partition the population"
+    assert np.isclose(segs["real_fraud_only_excl_legit_friction"]["do_nothing_cost"]
+                      + segs["adaptive_attacks_only"]["do_nothing_cost"],
+                      total_exposure, rtol=1e-4), "exposure must split, not double-count"

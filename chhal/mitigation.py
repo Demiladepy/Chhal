@@ -248,3 +248,105 @@ def threshold_baseline(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarray
     rep = pol.report(actions, y_true, amount)
     rep["threshold"] = threshold
     return rep
+
+
+def _cost_if_all(costs: CostModel, action: int, y_true: np.ndarray,
+                 amount: np.ndarray) -> np.ndarray:
+    """Realised cost of taking `action` on every row, given the true labels."""
+    pol = ActionPolicy(costs, PolicyConfig(max_review_rate=0.0))
+    return pol.realised_cost(np.full(len(y_true), int(action)), y_true, amount)
+
+
+def tune_two_thresholds(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarray,
+                        amount: np.ndarray) -> tuple[float, float]:
+    """The best amount-BLIND policy that exists, found exactly rather than guessed.
+
+    `block at score >= 0.5` is a straw man: nobody deploys an untuned threshold, so
+    beating it proves nothing about the expected-cost machinery. The honest comparator is
+    the strongest thing a fraud team builds without any of our economics — allow below one
+    threshold, challenge between, block above — with both thresholds tuned on the same
+    cost model we use ourselves.
+
+    Sorting by score turns the search into prefix sums, so we return the GLOBAL optimum
+    over all threshold pairs rather than the best of a sampled grid. Tune on a slice, then
+    price on another: a comparator tuned on its own evaluation set would be unbeatable and
+    meaningless.
+    """
+    order = np.argsort(p_fraud, kind="stable")
+    ps, ys, amts = p_fraud[order], y_true[order], amount[order]
+    n = len(ps)
+
+    zero = np.zeros(1)
+    A = np.concatenate([zero, np.cumsum(_cost_if_all(costs, Action.ALLOW, ys, amts))])
+    S = np.concatenate([zero, np.cumsum(_cost_if_all(costs, Action.STEP_UP, ys, amts))])
+    B = np.concatenate([zero, np.cumsum(_cost_if_all(costs, Action.BLOCK, ys, amts))])
+
+    # rows [0,i) allow, [i,j) step_up, [j,n) block
+    #   cost(i, j) = A[i] + (S[j] - S[i]) + (B[n] - B[j])
+    #              = (A - S)[i] + (S - B)[j] + B[n]
+    d = A - S
+    j = int(np.argmin(np.minimum.accumulate(d) + (S - B)))
+    i = int(np.argmin(d[: j + 1]))
+
+    hi = float(ps[-1]) + 1.0
+    return (hi if i >= n else float(ps[i])), (hi if j >= n else float(ps[j]))
+
+
+def two_threshold_baseline(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarray,
+                           amount: np.ndarray, t_stepup: float,
+                           t_block: float) -> Dict:
+    """Price a tuned allow / step-up / block ladder — amount-blind, no review queue."""
+    actions = np.where(p_fraud >= t_block, int(Action.BLOCK),
+                       np.where(p_fraud >= t_stepup, int(Action.STEP_UP),
+                                int(Action.ALLOW)))
+    rep = ActionPolicy(costs, PolicyConfig(max_review_rate=0.0)).report(actions, y_true, amount)
+    rep["t_stepup"], rep["t_block"] = round(t_stepup, 6), round(t_block, 6)
+    return rep
+
+
+def fraud_loss_avoided(costs: CostModel, actions: np.ndarray, y_true: np.ndarray,
+                       amount: np.ndarray) -> float:
+    """Share of actual FRAUD LOSS avoided — which is not the same as cost saved.
+
+    Total cost reduction nets the friction we impose on legitimate customers against the
+    fraud we stop, so it is the number a CFO wants. Fraud loss avoided ignores that
+    friction and answers only "how much of the money that would have walked out did we
+    keep?". Both are true; labelling one as the other is not.
+    """
+    fraud = y_true == 1
+    if not fraud.any():
+        return 0.0
+    exposed = costs.fraud_loss(amount[fraud]).sum()
+    pol = ActionPolicy(costs, PolicyConfig(max_review_rate=0.0))
+    incurred = pol.realised_cost(actions, y_true, amount)[fraud].sum()
+    return float(1.0 - incurred / exposed)
+
+
+def segment_costs(costs: CostModel, actions: np.ndarray, y_true: np.ndarray,
+                  amount: np.ndarray, is_adaptive: np.ndarray) -> Dict:
+    """Price the policy separately on real fraud and on our own attacks.
+
+    Detection is already reported per segment; economics was not, and that hid something:
+    a quarter of the cost denominator is fraud WE generated, and the policy is far better
+    at it than at the real thing. One blended percentage flatters us on real fraud by
+    borrowing credit from attacks we wrote ourselves.
+    """
+    pol = ActionPolicy(costs, PolicyConfig(max_review_rate=0.0))
+    realised = pol.realised_cost(actions, y_true, amount)
+    exposure = np.where(y_true == 1, costs.fraud_loss(amount), 0.0)
+    fraud = y_true == 1
+
+    out: Dict = {}
+    for name, keep in (("real_fraud_and_legit", ~(fraud & is_adaptive)),
+                       ("adaptive_attacks_only", fraud & is_adaptive),
+                       ("real_fraud_only_excl_legit_friction", fraud & ~is_adaptive)):
+        do_nothing = float(exposure[keep].sum())
+        spent = float(realised[keep].sum())
+        out[name] = {
+            "n": int(keep.sum()),
+            "do_nothing_cost": round(do_nothing, 2),
+            "policy_cost": round(spent, 2),
+            "net_cost_reduction_pct": round(100 * (do_nothing - spent) / do_nothing, 2)
+            if do_nothing else 0.0,
+        }
+    return out
