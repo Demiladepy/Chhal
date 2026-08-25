@@ -1,0 +1,132 @@
+{
+  "seeds": [
+    7,
+    11,
+    23,
+    42,
+    101
+  ],
+  "fprs": [
+    0.001,
+    0.01,
+    0.05
+  ],
+  "n_eval_per_variant": 600,
+  "protocol": "single-pass detector (one round of attacks, one retrain) per seed, so the variants differ in exactly one thing; deltas are computed per seed and then averaged, so the spread is of the difference",
+  "recall_mean": {
+    "threshold_hugging": {
+      "0.001": 0.0037,
+      "0.01": 0.017,
+      "0.05": 0.0873
+    },
+    "threshold_hugging_no_mimicry": {
+      "0.001": 0.0,
+      "0.01": 0.0137,
+      "0.05": 0.0757
+    },
+    "mule_fanout": {
+      "0.001": 0.6047,
+      "0.01": 0.8357,
+      "0.05": 0.94
+    },
+    "mule_fanout_uncoordinated": {
+      "0.001": 0.6627,
+      "0.01": 0.8623,
+      "0.05": 0.937
+    },
+    "mule_fanout_known_payee": {
+      "0.001": 0.3253,
+      "0.01": 0.8053,
+      "0.05": 0.8813
+    }
+  },
+  "recall_sd": {
+    "threshold_hugging": {
+      "0.001": 0.0048,
+      "0.01": 0.014,
+      "0.05": 0.0256
+    },
+    "threshold_hugging_no_mimicry": {
+      "0.001": 0.0,
+      "0.01": 0.013,
+      "0.05": 0.0291
+    },
+    "mule_fanout": {
+      "0.001": 0.1114,
+      "0.01": 0.054,
+      "0.05": 0.0136
+    },
+    "mule_fanout_uncoordinated": {
+      "0.001": 0.0726,
+      "0.01": 0.0295,
+      "0.05": 0.0112
+    },
+    "mule_fanout_known_payee": {
+      "0.001": 0.1274,
+      "0.01": 0.0597,
+      "0.05": 0.0383
+    }
+  },
+  "comparisons": {
+    "per-victim mimicry": {
+      "read_at_fpr": 0.05,
+      "mean_pp": -1.17,
+      "sem_pp": 0.75,
+      "beats_its_own_noise": false,
+      "all_operating_points": {
+        "0.001": [
+          -0.37,
+          0.24
+        ],
+        "0.01": [
+          -0.33,
+          0.76
+        ],
+        "0.05": [
+          -1.17,
+          0.75
+        ]
+      }
+    },
+    "coordination": {
+      "read_at_fpr": 0.001,
+      "mean_pp": 5.8,
+      "sem_pp": 2.12,
+      "beats_its_own_noise": true,
+      "all_operating_points": {
+        "0.001": [
+          5.8,
+          2.12
+        ],
+        "0.01": [
+          2.67,
+          2.73
+        ],
+        "0.05": [
+          -0.3,
+          0.9
+        ]
+      }
+    },
+    "the new-beneficiary flag": {
+      "read_at_fpr": 0.001,
+      "mean_pp": -27.93,
+      "sem_pp": 7.87,
+      "beats_its_own_noise": true,
+      "all_operating_points": {
+        "0.001": [
+          -27.93,
+          7.87
+        ],
+        "0.01": [
+          -3.03,
+          1.65
+        ],
+        "0.05": [
+          -5.87,
+          1.94
+        ]
+      }
+    }
+  }
+}
