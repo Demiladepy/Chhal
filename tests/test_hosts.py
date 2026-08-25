@@ -156,3 +156,86 @@ def test_feature_space_partitions_cleanly():
     covered = set(ATTACKER_CONTROLLED) | set(INHERITED_FEATURES) | {"day_of_week"}
     assert covered == set(FEATURE_COLUMNS)
     assert len(LINKAGE_FEATURES) == 14
+
+
+# ---------------------------------------------------------------------------
+# per-victim mimicry and coordination — the two things a vector can declare
+# beyond its own bands
+# ---------------------------------------------------------------------------
+def _starts_per_campaign(camp):
+    """First attack timestamp of every campaign in a batch."""
+    out = []
+    for e in np.unique(camp.entity):
+        m = (camp.entity == e) & camp.is_attack
+        if m.any():
+            out.append(camp.timestamp_s[m].min())
+    return np.array(out, float)
+
+
+def test_the_hero_vector_sizes_its_attack_to_the_victim_not_to_the_crowd(base, pool):
+    """`mimic_host` is the whole hero vector, so it needs a test that fails without it.
+
+    A population-band attack spends the median customer's money on every card it touches,
+    which is visibly wrong on any card that is not the median one: the detector scores
+    `amount_to_avg_ratio` against THIS account's baseline. Reading the band off the victim
+    instead should pull that ratio toward 1.
+    """
+    from dataclasses import replace
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+
+    hero = ALL_VECTORS[0]
+    assert hero.temporal.mimic_host, "the hero vector is the one that mimics its victim"
+
+    class Crowd(hero):                              # same vector, population bands
+        vector_id = "hero_without_mimicry"
+        temporal = replace(hero.temporal, mimic_host=False)
+
+    def ratios(V, seed):
+        rows = V().calibrate(prof, pool).batch(400, 0, np.random.default_rng(seed)).transactions
+        return np.abs(rows["amount_to_avg_ratio"].to_numpy() - 1.0)
+
+    mimic = np.median([np.median(ratios(hero, s)) for s in (0, 1, 2)])
+    crowd = np.median([np.median(ratios(Crowd, s)) for s in (0, 1, 2)])
+    assert mimic < crowd, (
+        f"mimicking the victim should land nearer their own baseline: "
+        f"|ratio-1| {mimic:.3f} with mimicry vs {crowd:.3f} without"
+    )
+
+
+def test_a_coordinated_vector_fires_its_campaigns_inside_one_window(base, pool):
+    """What makes the fan-out a network rather than a pile of unrelated takeovers."""
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    fanout = [V for V in ALL_VECTORS if V.temporal.coordinated_window_s is not None]
+    assert fanout, "no coordinated vector is registered"
+    V = fanout[0]
+
+    _, camp = V().calibrate(prof, pool).render_with_timeline(
+        300, np.random.default_rng(3))
+    starts = _starts_per_campaign(camp)
+    assert len(starts) > 5
+
+    window = V.temporal.coordinated_window_s
+    # generous: campaigns are nudged forward to an hour of day and past each host's own
+    # last transaction, so the realised spread is wider than the nominal window
+    assert starts.ptp() < window * 6, (
+        f"campaigns spread over {starts.ptp()/3600:.1f}h, window is {window/3600:.1f}h")
+
+
+def test_an_uncoordinated_vector_does_not_accidentally_synchronise(base, pool):
+    """The control for the test above — without the flag, takeovers are independent."""
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    V = [V for V in ALL_VECTORS if V.temporal.coordinated_window_s is None][0]
+    _, camp = V().calibrate(prof, pool).render_with_timeline(300, np.random.default_rng(3))
+    starts = _starts_per_campaign(camp)
+    assert starts.ptp() > 6 * 3_600 * 6, "independent takeovers should be spread out"
+
+
+def test_a_victim_with_almost_no_history_degrades_instead_of_breaking(base):
+    """Mimicry needs a distribution to read. Two transactions is not one, and the vector
+    has to fall back to the population bands rather than emit nonsense."""
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    thin = HostPool(base.train, min_history=2)
+    rows = ALL_VECTORS[0]().calibrate(prof, thin).batch(
+        200, 0, np.random.default_rng(9)).transactions
+    assert np.isfinite(rows.to_numpy(float)).all()
+    assert (rows["amount"] > 0).all()

@@ -37,29 +37,36 @@ from .campaign import TemporalProfile
 
 
 class ThresholdHugging(AttackVector):
-    """HERO VECTOR. LLM-tuned sequences that sit just under velocity/amount rules and
-    imitate the victim's own normal behaviour. Hardest to catch — the heart of the arms
-    race. If everything else is cut, this stays.
+    """HERO VECTOR. Per-victim mimicry: the campaign is sized and paced from the
+    compromised card's OWN history, not from the population's. Hardest to catch — the
+    heart of the arms race. If everything else is cut, this stays.
 
-    Everything here is deliberately INSIDE the legitimate body: bands in the middle of
-    the distribution, and a cadence (an hour to two days apart) indistinguishable from
-    ordinary card use. Its history is drawn from the same band as its attack, so
-    `amount_to_avg_ratio` lands near 1 — the account is spending what it always spends.
-    It should be the vector with the lowest KS distance from real traffic, and the
-    per-vector fidelity table is where that is checked rather than asserted.
+    `mimic_host=True` is the whole vector. Without it, "hides in the crowd" means the
+    middle of everyone's distribution, which is not where the decision is made: the
+    detector scores `amount_to_avg_ratio` and the gap against THIS card's baseline, and a
+    population-median attack on a below-median card is visibly wrong on both. With it,
+    the same quantile band is read off the victim's own spend and the same cadence off
+    the victim's own gaps, so a card that buys coffee gets a coffee-sized attack at
+    coffee-buying intervals, and the ratio lands near 1 because it genuinely is.
+
+    It should therefore be the vector with the lowest KS distance from real traffic and
+    the lowest recall, and the per-vector fidelity table is where that is checked rather
+    than asserted.
     """
 
     vector_id = "threshold_hugging"
     storyline = (
-        "An LLM profiles the victim's normal spend and emits transactions just below "
-        "every velocity and amount threshold, mimicking legitimate behaviour so the "
-        "detector sees nothing anomalous."
+        "The attacker profiles the victim's own spending and cadence from the card's "
+        "history, then transacts inside that profile — just under every velocity and "
+        "amount threshold the victim would themselves trip — so nothing about the "
+        "sequence is anomalous FOR THIS ACCOUNT."
     )
     temporal = TemporalProfile(
         txns_per_entity=(3, 9),
-        inter_arrival_s=(3_600.0, 172_800.0),      # 1 hour to 2 days — a normal cadence
-        amount_band=(0.35, 0.75),
+        inter_arrival_s=(3_600.0, 172_800.0),      # fallback for a thin-history victim
+        amount_band=(0.35, 0.75),                  # read off the victim, not the crowd
         start_hour_band=(0.25, 0.85),
+        mimic_host=True,
     )
 
     def static_features(self, n, rng):
@@ -146,4 +153,72 @@ class UpiCollectScam(AttackVector):
         }
 
 
-ALL_VECTORS = [ThresholdHugging, SyntheticBustout, CardTesting, UpiCollectScam]
+class MuleFanout(AttackVector):
+    """Many compromised accounts, one operator, one window — the vector GenAI actually
+    changes, because what it makes cheap is running a hundred of these at once.
+
+    Every other vector here is a single-account story: this card, this victim, this
+    burst. That is what fraud looked like when a person had to work each account by
+    hand. The thing generative models change is not the cleverness of one attack, it is
+    that one operator can run a mule network at a scale that used to need a call centre.
+    So this vector is deliberately unremarkable per account — two to five transfers,
+    sensible amounts, nothing that trips a per-account rule — and its signature lives
+    entirely in the fact that a hundred unrelated accounts did it inside the same window.
+
+    What this vector is really for
+    ------------------------------
+    The frozen feature space has no counterparty. There is no beneficiary id, no
+    destination account, no edge between two rows — so the coordination that DEFINES this
+    attack is not observable by the detector at all. It can only see each account's own
+    small burst, and whatever weak clustering survives in `hour` and `day_of_week`.
+
+    So this vector is built as a controlled experiment rather than as a fifth variation on
+    speed and size. It carries `mimic_host` for the same reason the hero vector does: each
+    account is made to look normal FOR ITSELF, which strips away the per-row tells the
+    detector would otherwise catch it on. What is left as a difference from
+    `threshold_hugging` is almost entirely the synchronisation.
+
+    That makes its recall a measurement of something. If it lands near the hero vector's,
+    coordination is genuinely invisible here and "a graph layer is future work" stops
+    being a line in a limitations section and becomes a number. If it lands well above,
+    the clustering in `hour` and `day_of_week` is doing the work, and that is worth
+    knowing too — it would mean a crude time-bucket feature buys some of what a graph
+    would.
+
+    An earlier draft of this vector set cross-border at 0.35 against a 0.7% legitimate
+    base rate. It scored 93.4%, and it was being caught on that one column rather than on
+    anything to do with the network — which would have made the experiment worthless while
+    looking like a good result.
+    """
+
+    vector_id = "mule_fanout"
+    storyline = (
+        "One operator drives a network of mule accounts opened or bought at scale. Each "
+        "account moves a modest, unremarkable amount onward to fresh beneficiaries — but "
+        "all of them move within the same few hours, before anyone reconciles across "
+        "accounts."
+    )
+    temporal = TemporalProfile(
+        txns_per_entity=(2, 5),                    # forgettable on its own
+        inter_arrival_s=(60.0, 900.0),             # fallback for a thin-history mule
+        amount_band=(0.55, 0.85),                  # read off the account, not the crowd
+        start_hour_band=(0.05, 0.35),              # unused while mimic_host is on
+        mimic_host=True,                           # locally normal, so only timing is left
+        coordinated_window_s=6 * 3_600.0,          # the whole network fires in one window
+    )
+
+    def static_features(self, n, rng):
+        p = self.p
+        return {
+            # the one thing a mule account cannot avoid: the money goes somewhere new
+            "is_new_beneficiary": np.ones(n, int),
+            # kept near the other vectors on purpose. Pushing it up makes the vector easy
+            # to catch on a single column and destroys what it is here to measure.
+            "is_cross_border": p.bernoulli(0.10, n, rng),
+            "channel_code": np.ones(n, int),                        # transfer rail
+        }
+
+
+# Order is load-bearing: tests and scripts index this list positionally, so new vectors
+# are appended rather than inserted.
+ALL_VECTORS = [ThresholdHugging, SyntheticBustout, CardTesting, UpiCollectScam, MuleFanout]

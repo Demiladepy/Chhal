@@ -40,6 +40,42 @@ class TemporalProfile:
     start_hour_band: tuple[float, float] = (0.0, 1.0)           # when the campaign begins
     amount_trend: float = 1.0                # multiplier from first to last attack txn
 
+    # --- how the campaign relates to things outside its own parameters -------------
+    mimic_host: bool = False
+    """Read the bands off THIS victim instead of the population.
+
+    With this off, `amount_band` and `inter_arrival_s` are quantiles of everyone's
+    traffic, so every campaign of a vector spends the same amounts at the same cadence no
+    matter whose card it is. That is a population-level disguise: it hides in the crowd,
+    but it does not hide from the one profile that actually scores the transaction, which
+    is the card's own. `amount_to_avg_ratio` gives it away immediately on any account that
+    does not happen to spend like the median.
+
+    With it on, the same quantile levels are applied to the HOST's own history: the
+    amounts are that card's own middle spend, and the gaps are that card's own cadence.
+    A card that buys coffee gets a coffee-sized attack. Needs a few real transactions to
+    read a distribution off; below that it falls back to the population bands, so a
+    thin-history host degrades rather than producing nonsense.
+    """
+
+    coordinated_window_s: float | None = None
+    """Fire every campaign in this batch inside one shared window, not independently.
+
+    Every other vector picks its takeover time per victim, so a hundred campaigns are a
+    hundred unrelated events. One actor running a hundred mule accounts does not look
+    like that: the accounts move together, because the point is to drain them before
+    anyone reconciles. Setting this anchors the whole batch to one moment and scatters
+    the campaigns across the window after it.
+
+    Worth being blunt about what this can and cannot show. Coordination is a property of
+    the SET of transactions, and the frozen feature space has no column for it -- no
+    beneficiary id, no counterparty, no graph. So the detector never sees the thing that
+    defines this vector; it can only see each account's own burst and whatever clustering
+    survives in `hour` and `day_of_week`. That is the honest reason a graph layer is
+    scoped as future work rather than claimed, and this vector is what makes the gap
+    measurable instead of hypothetical.
+    """
+
 
 @dataclass
 class Campaigns:
@@ -78,20 +114,50 @@ class Campaigns:
         )
 
 
+MIN_HISTORY_TO_MIMIC = 4         # fewer real transactions than this and a host has no
+                                 # readable distribution of its own
+
+
 def _log_uniform(lo: float, hi: float, n: int, rng: np.random.Generator) -> np.ndarray:
     return np.exp(rng.uniform(np.log(max(lo, 1e-6)), np.log(max(hi, 1e-6)), n))
 
 
+def _host_amounts(history: np.ndarray, lo: float, hi: float, n: int,
+                  rng: np.random.Generator) -> np.ndarray:
+    """The same quantile band, read off this card's own spend instead of everyone's."""
+    return np.quantile(history, rng.uniform(lo, hi, n))
+
+
+def _host_gaps(history_ts: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray | None:
+    """This card's own cadence, or None if it has too few transactions to have one."""
+    gaps = np.diff(history_ts.astype(np.float64))
+    gaps = gaps[gaps > 0]
+    if len(gaps) < MIN_HISTORY_TO_MIMIC - 1:
+        return None
+    # the middle of its own range: an attack at this card's 5th-percentile gap would be
+    # unusually fast FOR THIS CARD, which is the tell we are trying not to leave
+    return np.maximum(np.quantile(gaps, rng.uniform(0.25, 0.75, n)), 1.0)
+
+
 def _takeover_time(last_real_ts: int, hour_band: tuple[float, float],
-                   base_profile, rng: np.random.Generator) -> int:
+                   base_profile, rng: np.random.Generator,
+                   host_hours: np.ndarray | None = None,
+                   earliest: int | None = None) -> int:
     """When the compromised card is first used, strictly after its last real transaction.
 
     Snapped forward to an hour of day this vector would plausibly start at, so the
-    campaign's clock still lines up with the vector's story.
+    campaign's clock still lines up with the vector's story. `host_hours` swaps the
+    vector's population hour band for the hours this card is actually used at;
+    `earliest` overrides the per-victim wait when the whole batch is anchored to one
+    moment.
     """
-    target = int(base_profile.band("hour", *hour_band, 1, rng)[0]) % 24
-    earliest = (last_real_ts + TAKEOVER_GAP_S
-                + int(rng.integers(0, MAX_TAKEOVER_WAIT_DAYS * 86_400)))
+    if host_hours is not None and len(host_hours):
+        target = int(rng.choice(host_hours)) % 24
+    else:
+        target = int(base_profile.band("hour", *hour_band, 1, rng)[0]) % 24
+    if earliest is None:
+        earliest = (last_real_ts + TAKEOVER_GAP_S
+                    + int(rng.integers(0, MAX_TAKEOVER_WAIT_DAYS * 86_400)))
     delta = (target - int(hour_of(np.array([earliest]))[0])) % 24
     return earliest + delta * 3_600 + int(rng.integers(0, 3_600))
 
@@ -102,14 +168,46 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
     ent, ts, amt, atk, inh = [], [], [], [], []
     produced, idx = 0, 0
 
+    # One moment the whole batch answers to, when the vector is a coordinated one. Every
+    # host is then drawn from the accounts that were live shortly before it, so each is
+    # still taken over within the usual window of its own last real transaction -- the
+    # accounts move together without any of them having to sit dormant for a year first.
+    anchor = None
+    if profile.coordinated_window_s is not None:
+        anchor = hosts.anchor(rng, MAX_TAKEOVER_WAIT_DAYS * 86_400)
+
     while produced < n_attack_rows:
-        host = hosts.sample(rng)
+        if anchor is None:
+            host = hosts.sample(rng)
+        else:
+            host = hosts.sample_before(anchor, MAX_TAKEOVER_WAIT_DAYS * 86_400,
+                                       TAKEOVER_GAP_S, rng)
         n_a = int(rng.integers(profile.txns_per_entity[0], profile.txns_per_entity[1] + 1))
 
-        start = _takeover_time(host.last_ts, profile.start_hour_band, base_profile, rng)
-        a_gaps = _log_uniform(*profile.inter_arrival_s, n_a, rng)
-        a_ts = start + np.cumsum(a_gaps)
-        a_amt = base_profile.band("amount", *profile.amount_band, n_a, rng)
+        host_hours = hour_of(host.history_ts) if profile.mimic_host else None
+        earliest = None
+        if anchor is not None:
+            earliest = max(int(anchor + rng.uniform(0.0, profile.coordinated_window_s)),
+                           host.last_ts + TAKEOVER_GAP_S)
+
+        start = _takeover_time(host.last_ts, profile.start_hour_band, base_profile, rng,
+                               host_hours=host_hours, earliest=earliest)
+
+        a_gaps = None
+        if profile.mimic_host:
+            a_gaps = _host_gaps(host.history_ts, n_a, rng)
+        if a_gaps is None:
+            a_gaps = _log_uniform(*profile.inter_arrival_s, n_a, rng)
+        # The first attack lands AT the takeover, not one gap after it. `cumsum` alone
+        # would push it out by a full inter-arrival, which was a modest offset while the
+        # gaps came from the vector's own band and became weeks once they came from the
+        # victim's — long enough to break a coordinated window apart.
+        a_ts = start + np.r_[0.0, np.cumsum(a_gaps[:-1])]
+
+        if profile.mimic_host and len(host.history_amount) >= MIN_HISTORY_TO_MIMIC:
+            a_amt = _host_amounts(host.history_amount, *profile.amount_band, n_a, rng)
+        else:
+            a_amt = base_profile.band("amount", *profile.amount_band, n_a, rng)
         if profile.amount_trend != 1.0 and n_a > 1:
             a_amt = a_amt * np.linspace(1.0, profile.amount_trend, n_a)
 

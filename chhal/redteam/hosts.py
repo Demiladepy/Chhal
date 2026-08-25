@@ -95,14 +95,49 @@ class HostPool:
         if len(self._starts) == 0:
             raise ValueError("no eligible host accounts in this split")
 
+        # Accounts ordered by when they were last seen, so a coordinated vector can ask
+        # for the ones that were live around a given moment instead of scanning.
+        self._last_ts = self._ts[self._ends - 1]
+        self._by_last = np.argsort(self._last_ts, kind="stable")
+        self._last_sorted = self._last_ts[self._by_last]
+
     def __len__(self) -> int:
         return len(self._starts)
 
-    def sample(self, rng: np.random.Generator) -> Host:
-        i = int(rng.integers(0, len(self._starts)))
+    def _host(self, i: int) -> Host:
         s, e = self._starts[i], self._ends[i]
         return Host(history_ts=self._ts[s:e], history_amount=self._amt[s:e],
                     inherited=self._inherited[e - 1])   # state at the last real transaction
+
+    def sample(self, rng: np.random.Generator) -> Host:
+        return self._host(int(rng.integers(0, len(self._starts))))
+
+    def anchor(self, rng: np.random.Generator, lookback_s: int) -> int:
+        """A moment with enough accounts live behind it to fan out across.
+
+        Drawn from the last-seen times themselves rather than from the calendar, so the
+        window always lands where the data actually has accounts. The earliest accounts
+        are skipped because nothing has been seen before them yet.
+        """
+        lo = int(np.searchsorted(self._last_sorted, self._last_sorted[0] + lookback_s))
+        lo = min(lo, len(self._last_sorted) - 1)
+        return int(self._last_sorted[int(rng.integers(lo, len(self._last_sorted)))])
+
+    def sample_before(self, anchor: int, lookback_s: int, min_gap_s: int,
+                      rng: np.random.Generator) -> Host:
+        """An account last seen in [anchor - lookback, anchor - min_gap].
+
+        A coordinated fan-out compromises accounts that were ALL live shortly before it
+        fires. Without this bound the batch would still be synchronised, but half of it
+        would be accounts dormant for a year, and the age column would say so loudly.
+        Falls back to the nearest account below the anchor when the window is empty,
+        which keeps the "attack is strictly after the last real transaction" rule intact.
+        """
+        hi = int(np.searchsorted(self._last_sorted, anchor - min_gap_s, side="right"))
+        lo = int(np.searchsorted(self._last_sorted, anchor - lookback_s, side="left"))
+        if hi <= lo:
+            lo, hi = max(hi - 1, 0), max(hi, 1)
+        return self._host(int(self._by_last[int(rng.integers(lo, hi))]))
 
     def describe(self) -> str:
         sizes = self._ends - self._starts
