@@ -2,29 +2,29 @@
   "data_source": "ieee",
   "eval_rows": 149235,
   "eval_fraud_rate": 0.0449,
-  "calibration_ece_raw": 0.0053,
+  "calibration_ece_raw": 0.0096,
   "calibration_ece_calibrated": 0.0,
   "detection_at_fixed_fpr": [
     {
       "fpr": 0.001,
-      "threshold": 0.925,
-      "recall_real_fraud": 0.1996,
-      "recall_adaptive_attacks": 0.9425,
-      "recall_all_fraud": 0.377
+      "threshold": 0.952532,
+      "recall_real_fraud": 0.2047,
+      "recall_adaptive_attacks": 0.6781,
+      "recall_all_fraud": 0.3178
     },
     {
       "fpr": 0.005,
-      "threshold": 0.451807,
-      "recall_real_fraud": 0.3278,
-      "recall_adaptive_attacks": 0.975,
-      "recall_all_fraud": 0.4824
+      "threshold": 0.505535,
+      "recall_real_fraud": 0.3439,
+      "recall_adaptive_attacks": 0.8644,
+      "recall_all_fraud": 0.4682
     },
     {
       "fpr": 0.01,
-      "threshold": 0.291971,
-      "recall_real_fraud": 0.411,
-      "recall_adaptive_attacks": 0.985,
-      "recall_all_fraud": 0.5481
+      "threshold": 0.371429,
+      "recall_real_fraud": 0.3676,
+      "recall_adaptive_attacks": 0.8744,
+      "recall_all_fraud": 0.4887
     }
   ],
   "cost_model": {
@@ -45,55 +45,55 @@
   "policies": [
     {
       "policy": "do nothing (allow all)",
-      "cost_per_1k_txns": 8171.74,
-      "total_cost": 1219509.41,
+      "cost_per_1k_txns": 10057.33,
+      "total_cost": 1500905.74,
       "vs_do_nothing": 0.0,
       "loss_avoided_pct": 0.0
     },
     {
       "policy": "block at score >= 0.5",
-      "cost_per_1k_txns": 4943.72,
-      "total_cost": 737775.38,
-      "vs_do_nothing": 481734.03,
-      "loss_avoided_pct": 39.5
+      "cost_per_1k_txns": 5046.6,
+      "total_cost": 753128.82,
+      "vs_do_nothing": 747776.92,
+      "loss_avoided_pct": 49.82
     },
     {
       "policy": "expected-cost policy",
-      "cost_per_1k_txns": 2591.62,
-      "total_cost": 386760.31,
-      "vs_do_nothing": 832749.1,
-      "loss_avoided_pct": 68.29
+      "cost_per_1k_txns": 2858.01,
+      "total_cost": 426515.31,
+      "vs_do_nothing": 1074390.43,
+      "loss_avoided_pct": 71.58
     }
   ],
   "expected_cost_policy": {
     "n": 149235,
     "action_mix": {
-      "allow": 0.82373,
-      "step_up": 0.15244,
+      "allow": 0.78502,
+      "step_up": 0.19147,
       "review": 0.005,
-      "block": 0.01884
+      "block": 0.01851
     },
     "review_rate": 0.005,
-    "block_rate_on_legit": 0.00133,
-    "fraud_touched_rate": 0.77418,
-    "fraud_blocked_rate": 0.39134,
-    "total_cost": 386760.31,
-    "cost_per_1k_txns": 2591.62
+    "block_rate_on_legit": 0.00213,
+    "fraud_touched_rate": 0.77925,
+    "fraud_blocked_rate": 0.36701,
+    "total_cost": 426515.31,
+    "cost_per_1k_txns": 2858.01
   },
   "naive_threshold_policy": {
     "n": 149235,
     "action_mix": {
-      "allow": 0.97507,
+      "allow": 0.97178,
       "step_up": 0.0,
       "review": 0.0,
-      "block": 0.02493
+      "block": 0.02822
     },
     "review_rate": 0.0,
-    "block_rate_on_legit": 0.00442,
-    "fraud_touched_rate": 0.46119,
-    "fraud_blocked_rate": 0.46119,
-    "total_cost": 737775.38,
-    "cost_per_1k_txns": 4943.72,
+    "block_rate_on_legit": 0.00754,
+    "fraud_touched_rate": 0.46821,
+    "fraud_blocked_rate": 0.46821,
+    "total_cost": 753128.82,
+    "cost_per_1k_txns": 5046.6,
     "threshold": 0.5
   }
 }

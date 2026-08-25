@@ -4,36 +4,42 @@
   "test_rows": 147635,
   "operating_points": {
     "recall_at_fpr=0.001": {
-      "baseline": 0.0,
-      "final": 0.9715
+      "baseline": 0.0025,
+      "final": 0.838
     },
     "recall_at_fpr=0.005": {
-      "baseline": 0.004,
-      "final": 0.9955
+      "baseline": 0.009,
+      "final": 0.9135
     },
     "recall_at_fpr=0.01": {
-      "baseline": 0.004,
-      "final": 0.9975
+      "baseline": 0.0135,
+      "final": 0.9205
     }
   },
-  "baseline_pr_auc": 0.0083,
-  "final_pr_auc": 0.9928,
-  "final_alert_rate": 0.01443,
+  "baseline_pr_auc": 0.0176,
+  "final_pr_auc": 0.9275,
+  "final_alert_rate": 0.01259,
   "naive_threshold_0.5": {
-    "baseline_f1": 0.0065,
-    "final_f1": 0.8937,
-    "final_recall": 0.9925,
-    "final_roc_auc": 0.9997,
-    "final_fp_rate_on_legit": 0.0032
+    "baseline_f1": 0.0097,
+    "final_f1": 0.812,
+    "final_recall": 0.909,
+    "final_roc_auc": 0.9951,
+    "final_fp_rate_on_legit": 0.0046
   },
   "fidelity": {
     "on_manifold_rate": 1.0,
+    "derived_on_manifold_rate": 0.9315,
     "mimicry_vector": "threshold_hugging",
-    "mimicry_mean_ks_vs_legit": 0.2233,
-    "frac_off_manifold_pre_clip": 0.3151
+    "mimicry_mean_ks_vs_legit": 0.1742,
+    "frac_off_manifold_pre_clip": 0.0961,
+    "consistency_violations": {
+      "violates_1h_rule": 0.0,
+      "violates_24h_rule": 0.0,
+      "velocity_1h_exceeds_24h": 0.0
+    }
   },
   "iterations": 8,
-  "runtime_seconds": 93.1,
+  "runtime_seconds": 65.2,
   "config": {
     "iterations": 8,
     "attacks_per_vector": 400,

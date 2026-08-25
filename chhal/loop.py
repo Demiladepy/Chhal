@@ -33,6 +33,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
+from .behaviour import consistency_violations
 from .contract import FEATURE_COLUMNS, LABEL_COLUMN, AttackBatch
 from .data import BaseData, load_base_data
 from .detector import Detector
@@ -164,6 +165,12 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     # back, averaged over the fully-optimized benchmark batches.
     fid["frac_off_manifold_pre_clip"] = round(float(np.mean(
         [b.provenance["frac_off_manifold_pre_clip"] for b in bench_batches])), 4)
+    # Physical consistency, measured on the OPTIMIZED benchmark rather than the seed.
+    # Measuring it on the seed is what let a version of the optimizer ship that broke
+    # the invariant on 59-93% of the rows anything downstream actually saw.
+    fid["consistency_violations"] = {
+        k: round(float(v), 6) for k, v in consistency_violations(bench_attacks).items()
+    }
     per_vector_fid = fid.pop("per_vector")
     mimic_ks = fid.pop("mimicry_ks_table")
     mimic_attacks = bench_attacks[bench_vec == fid["mimicry_vector"]]

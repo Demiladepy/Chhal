@@ -76,6 +76,43 @@ ATTACKER_CONTROLLED: List[str] = [
     "is_cross_border",
 ]
 
+# Of the nine above, only these FOUR are set directly, one value at a time, by the
+# person committing the fraud. The other five are not settable at all: they are what a
+# timeline LOOKS like once it has happened. You cannot choose to have transacted four
+# times in the last hour; you can only transact four times, and then that is what the
+# counter says. The evasion optimizer therefore searches over these four plus the
+# timeline itself, and re-derives the rest — see optimizer.py.
+ATTACKER_DIRECT: List[str] = [
+    "amount",
+    "is_new_beneficiary",
+    "channel_code",
+    "is_cross_border",
+]
+
+# Chosen once per compromised account, not per transaction: an attacker picks a rail and
+# a destination when they take the card over, and does not switch partway through.
+ENTITY_LEVEL_FEATURES: List[str] = [
+    "channel_code",
+    "is_cross_border",
+]
+
+# Produced by chhal.behaviour.derive (and hour_of / day_of_week_of) from a timeline.
+# NOTHING may perturb these directly. Doing so re-creates the exact defect the campaign
+# architecture exists to prevent: four independent views of one timeline, mutually
+# contradicting. If a search wants to move them, it must move the timeline.
+DERIVED_FEATURES: List[str] = [
+    "hour",
+    "day_of_week",
+    "velocity_1h",
+    "velocity_24h",
+    "time_since_last_txn_min",
+    "amount_to_avg_ratio",
+]
+
+# Columns of AttackBatch.timeline — the campaign a batch was rendered from, carried
+# alongside the feature rows so the optimizer can re-derive instead of perturbing.
+TIMELINE_COLUMNS: List[str] = ["entity", "timestamp_s", "amount", "is_attack"]
+
 # Features that must hold whole numbers wherever they are produced or perturbed.
 # Shared by the red team's sampler and the evasion optimizer so the two cannot drift.
 INTEGER_FEATURES: List[str] = [
@@ -99,6 +136,11 @@ class AttackBatch:
     iteration: int                       # which loop pass produced it
     transactions: pd.DataFrame           # columns == FEATURE_COLUMNS, exactly
     provenance: Dict = field(default_factory=dict)  # seed, optimizer params, storyline
+    # The campaign these rows were rendered from: one row per transaction INCLUDING the
+    # host account's real history, with is_attack marking which of them are ours. The
+    # optimizer needs the history because velocity and amount_to_avg_ratio are measured
+    # against it. None only for hand-built batches in tests.
+    timeline: "pd.DataFrame | None" = None
 
     def validate(self) -> "AttackBatch":
         cols = list(self.transactions.columns)
@@ -111,6 +153,20 @@ class AttackBatch:
             )
         if self.transactions.isna().any().any():
             raise ValueError(f"AttackBatch[{self.vector_id}] contains NaNs")
+        if self.timeline is not None:
+            missing_t = set(TIMELINE_COLUMNS) - set(self.timeline.columns)
+            if missing_t:
+                raise ValueError(
+                    f"AttackBatch[{self.vector_id}].timeline is missing "
+                    f"{sorted(missing_t)}"
+                )
+            n_attack = int(self.timeline["is_attack"].sum())
+            if n_attack != len(self.transactions):
+                raise ValueError(
+                    f"AttackBatch[{self.vector_id}] timeline has {n_attack} attack rows "
+                    f"but {len(self.transactions)} feature rows — they must correspond "
+                    f"one-to-one and in order."
+                )
         return self
 
     def __len__(self) -> int:

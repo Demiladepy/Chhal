@@ -3,53 +3,53 @@
   "per_vector": [
     {
       "held_out_vector": "threshold_hugging",
-      "unseen_supervised": 0.698,
-      "real_supervised": 0.1916,
-      "unseen_max_fusion": 0.564,
-      "real_max_fusion": 0.1392,
-      "unseen_stacked": 0.674,
-      "real_stacked": 0.1904
+      "unseen_supervised": 0.038,
+      "real_supervised": 0.1876,
+      "unseen_max_fusion": 0.006,
+      "real_max_fusion": 0.1384,
+      "unseen_stacked": 0.068,
+      "real_stacked": 0.1822
     },
     {
       "held_out_vector": "bustout",
-      "unseen_supervised": 0.924,
-      "real_supervised": 0.1784,
-      "unseen_max_fusion": 0.906,
-      "real_max_fusion": 0.1294,
-      "unseen_stacked": 0.914,
-      "real_stacked": 0.1892
+      "unseen_supervised": 0.634,
+      "real_supervised": 0.1588,
+      "unseen_max_fusion": 0.472,
+      "real_max_fusion": 0.1094,
+      "unseen_stacked": 0.622,
+      "real_stacked": 0.1502
     },
     {
       "held_out_vector": "card_testing",
-      "unseen_supervised": 0.96,
-      "real_supervised": 0.1606,
-      "unseen_max_fusion": 0.944,
-      "real_max_fusion": 0.1325,
-      "unseen_stacked": 0.956,
-      "real_stacked": 0.1814
+      "unseen_supervised": 0.214,
+      "real_supervised": 0.1686,
+      "unseen_max_fusion": 0.146,
+      "real_max_fusion": 0.1314,
+      "unseen_stacked": 0.224,
+      "real_stacked": 0.1453
     },
     {
       "held_out_vector": "upi_collect",
-      "unseen_supervised": 0.954,
-      "real_supervised": 0.1975,
-      "unseen_max_fusion": 0.924,
-      "real_max_fusion": 0.1435,
-      "unseen_stacked": 0.918,
-      "real_stacked": 0.1845
+      "unseen_supervised": 0.668,
+      "real_supervised": 0.1659,
+      "unseen_max_fusion": 0.606,
+      "real_max_fusion": 0.1253,
+      "unseen_stacked": 0.59,
+      "real_stacked": 0.1551
     }
   ],
   "means": {
     "supervised": {
-      "unseen": 0.884,
-      "real_fraud": 0.182
+      "unseen": 0.3885,
+      "real_fraud": 0.1702
     },
     "max_fusion": {
-      "unseen": 0.8345,
-      "real_fraud": 0.1362
+      "unseen": 0.3075,
+      "real_fraud": 0.1261
     },
     "stacked": {
-      "unseen": 0.8655,
-      "real_fraud": 0.1864
+      "unseen": 0.376,
+      "real_fraud": 0.1582
     }
   },
   "anomaly_alone": {
@@ -57,5 +57,5 @@
     "real_fraud": 0.0063
   },
   "anomaly_carried_share": 0.0,
-  "verdict": "max fusion -0.0495 on an unseen family \u2014 rejected, it spends budget on an arm carrying 0.0% of catches. Stacking the anomaly score as a FEATURE is -0.0185 and is the variant to ship. The arm is near-useless alone because attacks are on-manifold by construction \u2014 the fidelity guardrail blinds it."
+  "verdict": "max fusion -0.0810 and stacking -0.0125 against the supervised detector on an unseen family. The anomaly arm carries 0.0% of catches and scores 0.0000 alone, because attacks are on-manifold by construction \u2014 the better the fidelity guarantee, the less an outlier detector can contribute. Ship: supervised. Neither fusion earns its 32MB; the single supervised model wins."
 }

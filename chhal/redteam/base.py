@@ -48,7 +48,7 @@ from typing import Dict, Tuple
 import numpy as np
 import pandas as pd
 
-from ..behaviour import day_of_week_of, derive, hour_of
+from ..behaviour import assemble_frame
 from ..contract import (FEATURE_COLUMNS, INHERITED_FEATURES, INTEGER_FEATURES,
                         AttackBatch)
 from .campaign import TemporalProfile, generate
@@ -135,37 +135,39 @@ class AttackVector(ABC):
         what a fraudster genuinely decides: the payee, the rail, the destination.
         """
 
-    def render(self, n: int, rng: np.random.Generator) -> pd.DataFrame:
-        """n fraud rows: a campaign mounted on a real account, derived from its timeline."""
-        if self.temporal is None:
-            raise RuntimeError(f"{type(self).__name__} declares no TemporalProfile")
-        camp = generate(self.temporal, n, self.p, rng, self.h)
-        beh = derive(camp.entity, camp.timestamp_s, camp.amount)
+    def build_frame(self, camp, rng: np.random.Generator) -> pd.DataFrame:
+        """Feature rows for EVERY row of a campaign — the host's real history included.
 
-        df = pd.DataFrame({
-            "amount": camp.amount,
-            "hour": hour_of(camp.timestamp_s),
-            "day_of_week": day_of_week_of(camp.timestamp_s),
-            **{c: beh[c].to_numpy() for c in beh.columns},
-            **self.static_features(len(camp.amount), rng),
-        })
-        # issuer-side context, inherited from the host account rather than invented
-        for j, col in enumerate(INHERITED_FEATURES):
-            df[col] = camp.inherited[:, j]
-
+        Kept separate from `render` because the evasion optimizer re-runs exactly this
+        step after moving the timeline. The history rows are what velocity and
+        amount_to_avg_ratio are measured against, so they cannot be dropped before the
+        derivation; they are dropped after.
+        """
+        df = assemble_frame(camp.entity, camp.timestamp_s, camp.amount,
+                            camp.is_attack, camp.inherited, INHERITED_FEATURES)
+        for col, values in self.static_features(len(camp.amount), rng).items():
+            df[col] = values
         for col in self.ENTITY_LEVEL:                    # one choice per account
             df[col] = df.groupby(camp.entity)[col].transform("first")
+        return df
 
-        # The card keeps ageing while the attacker holds it: the host's age was measured
-        # at its last real transaction, and the takeover happens some days after that.
-        first_ts = pd.Series(camp.timestamp_s).groupby(camp.entity).transform("min")
-        df["account_age_days"] = df["account_age_days"] + (camp.timestamp_s - first_ts) / 86_400.0
+    def render(self, n: int, rng: np.random.Generator) -> pd.DataFrame:
+        """n fraud rows: a campaign mounted on a real account, derived from its timeline."""
+        return self.render_with_timeline(n, rng)[0]
 
-        # the host's real transactions exist only to give the account a baseline
-        return df[camp.is_attack].head(n).reset_index(drop=True)
+    def render_with_timeline(self, n: int, rng: np.random.Generator):
+        """As `render`, plus the campaign the rows came from (see AttackBatch.timeline)."""
+        if self.temporal is None:
+            raise RuntimeError(f"{type(self).__name__} declares no TemporalProfile")
+        # Truncate to exactly n attack rows BEFORE deriving, so the timeline and the
+        # feature rows correspond one-to-one. Safe: every derivation looks backward only.
+        camp = generate(self.temporal, n, self.p, rng, self.h).truncate_to(n)
+        df = self.build_frame(camp, rng)
+        return df[camp.is_attack].reset_index(drop=True), camp
 
     def batch(self, n: int, iteration: int, rng: np.random.Generator) -> AttackBatch:
-        df = self.render(n, rng)[FEATURE_COLUMNS].reset_index(drop=True)
+        rows, camp = self.render_with_timeline(n, rng)
+        df = rows[FEATURE_COLUMNS].reset_index(drop=True)
         for col in INTEGER_FEATURES:          # one place, so no vector can forget
             df[col] = df[col].round().astype(int)
         return AttackBatch(
@@ -173,4 +175,14 @@ class AttackVector(ABC):
             iteration=iteration,
             transactions=df,
             provenance={"storyline": self.storyline},
+            # The issuer-side block travels with the campaign so the optimizer can
+            # rebuild feature rows from a moved timeline without needing the vector,
+            # the host pool, or anything else that produced them.
+            timeline=pd.DataFrame({
+                "entity": camp.entity,
+                "timestamp_s": camp.timestamp_s,
+                "amount": camp.amount,
+                "is_attack": camp.is_attack,
+                **{c: camp.inherited[:, j] for j, c in enumerate(INHERITED_FEATURES)},
+            }),
         ).validate()

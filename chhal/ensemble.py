@@ -16,24 +16,30 @@ What the measurement said
 Run `scripts/ensemble_check.py`. The honest answer is mixed and worth reading before
 quoting any of this:
 
-  * The anomaly arm **on its own is useless here** — 0.001 recall on an unseen attack
-    family and 0.000 on real fraud at a 0.1% budget. Essentially random.
-  * Fusing by `max` on a shared percentile axis is **worse than not doing it**
-    (0.887 vs 0.894 on an unseen family), because it spends part of the false-positive
-    budget on an arm that carries only 0.1% of the catches.
-  * Feeding the anomaly score to the supervised model **as an extra feature** is the
-    only variant that helps: 0.894 -> 0.905 on an unseen family, driven almost entirely
-    by `bustout` (0.750 -> 0.802). On real IEEE-CIS fraud it changes nothing.
+  * The anomaly arm **on its own is useless here** — 0.000 recall on an unseen attack
+    family and 0.006 on real fraud at a 0.1% budget. Essentially random.
+  * Fusing by `max` on a shared percentile axis is **worse than not doing it**, because
+    it spends part of the false-positive budget on an arm that carries 0.0% of the
+    catches.
+  * Feeding the anomaly score to the supervised model **as an extra feature** does not
+    rescue it either. It helped once, on the 12-feature space this module was first
+    written for; the linkage block changed that and this docstring did not keep up, so
+    for a while the file recommended a variant its own script measured as worse. Numbers
+    are deliberately not quoted here any more — `scripts/ensemble_check.py` prints the
+    current ones and derives its recommendation from them, so the two cannot drift apart
+    again.
 
 The reason the arm fails is our own doing, and it is the interesting part. Attack rows
-are drawn through the inverse CDF of real legitimate traffic and then clipped to the
-plausibility manifold, so they are on-manifold *by construction* — that is exactly what
-the fidelity guardrail was built to guarantee. A detector whose entire question is "is
+are drawn through the inverse CDF of real legitimate traffic, and what the attacker sets
+is held inside the plausibility manifold, so they sit on-manifold *by construction* —
+that is exactly what the fidelity guardrail was built to guarantee. A detector whose entire question is "is
 this off-manifold?" cannot see them. The better our fidelity claim gets, the less an
 outlier detector can contribute.
 
-`StackedDetector` is therefore the variant to use, `Ensemble` is kept because the
-negative result is worth being able to reproduce.
+Both `Ensemble` and `StackedDetector` are kept, and neither is presented as the thing to
+ship: run `scripts/ensemble_check.py` and read the verdict it computes. The negative
+result is worth being able to reproduce, and worth reporting — a measurement that changed
+our own minds is better evidence than one that confirmed them.
 
 Fusing them
 -----------

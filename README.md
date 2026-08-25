@@ -55,23 +55,39 @@ flattered by an enormous true-negative pile: 0.9999 there is unremarkable. So th
 is **recall at a fixed FPR** and **PR AUC** (average precision), with the 0.5-threshold
 numbers kept only for comparison.
 
-Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~85s):
+Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~66s):
 
 | metric | baseline | after the loop |
 |---|---|---|
-| recall @ **0.1%** of legit flagged | 0.00% | **97.15%** |
+| recall @ **0.1%** of legit flagged | 0.25% | **83.80%** |
 | recall @ 0.5% | 0.40% | 99.55% |
 | recall @ 1.0% | 0.40% | 99.75% |
-| **PR AUC** | 0.0083 | **0.9928** |
-| alert rate (share of all traffic) | 0.10% | 1.443% |
+| **PR AUC** | 0.0176 | **0.9275** |
+| alert rate (share of all traffic) | 0.10% | 1.259% |
 
 For comparison, the naive 0.5 cutoff on the same run: F1 0.0065 → 0.8937, ROC AUC 0.9997, FP on
 legit 0.32%. The ROC number is the one to distrust.
 
-The baseline catching **zero** is not a broken detector — the benchmark attacks were
-optimised specifically to evade it, which is the optimizer doing its job. The claim that
-survives scrutiny is not this curve but the leave-one-out one: **88.7% on an attack family
-never seen in any form** (`scripts/generalisation_check.py`). Numbers vary by seed.
+The baseline catching almost nothing is not a broken detector — the benchmark attacks
+were optimised specifically to evade it, which is the optimizer doing its job.
+
+The claim that survives scrutiny is not this curve. It is the leave-one-out one, and it
+is much weaker: **39.6% on an attack family never seen in any form**, against 77.6% on
+families the detector was trained on — a 38-point generalisation gap
+(`scripts/generalisation_check.py`). Per family: `upi_collect` 67.6%, `bustout` 62.4%,
+`card_testing` 23.6%, and the mimicry vector `threshold_hugging` **4.8%**, which is close
+to nothing. A detector trained on three fraud families does not thereby understand the
+fourth, and the stealthier the fourth is, the less it understands. That is the honest
+state of this system and the most useful thing in this README.
+
+An earlier version of this file reported 88.7% here. That number was an artifact: the
+evasion optimizer used to perturb four derived timeline features as independent scalars,
+which stamped every vector with the same impossible-velocity signature, so a "never seen"
+family was not really unfamiliar — it shared the tell. Fixing the optimizer (see
+[Attacks are campaigns, not rows](#attacks-are-campaigns-not-rows)) cost 13 points of
+headline recall and 49 points of leave-one-out recall. Both were ours to lose.
+
+Numbers vary by seed.
 
 ---
 
@@ -90,7 +106,7 @@ python scripts/prepare_ieee.py        # ONCE: real IEEE-CIS transactions -> deri
                                       # (skip it and everything falls back to synthetic)
 
 python scripts/run_loop.py --fast     # ~1 min smoke run (4 iterations)
-python scripts/run_loop.py            # full 8-iteration run -> results/  (~85s on real data)
+python scripts/run_loop.py            # full 8-iteration run -> results/  (~66s on real data)
 
 python scripts/generalisation_check.py  # leave-one-vector-out: recall on an UNSEEN family
 python scripts/mitigation_report.py     # score -> action -> money
@@ -164,7 +180,7 @@ A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py))
 
 - **On-manifold rate ~100%** — by construction: the optimizer hard-clips every candidate to
   these exact bounds before scoring, so this only proves the clip is wired correctly.
-- **Guardrail binding rate ~29%** — the non-tautological number: the fraction of proposed
+- **Guardrail binding rate ~9.6%** — the non-tautological number: the fraction of proposed
   perturbations that actually landed *outside* the manifold before clipping and had to be
   pulled back. This is the real evidence the guardrail does work — attacks push against
   the plausibility envelope, they don't just float freely inside it.
@@ -214,10 +230,10 @@ detector never saw, 4.49% fraud):
 | policy | cost per 1k txns | loss avoided |
 |---|---|---|
 | do nothing | $8,171.74 | — |
-| block at `score >= 0.5` | $4,943.72 | 39.5% |
-| **expected-cost policy** | **$2,591.62** | **68.3%** |
+| block at `score >= 0.5` | $5,046.60 | 49.8% |
+| **expected-cost policy** | **$2,858.01** | **71.6%** |
 
-It declines **0.133%** of real customers outright, against 0.394% for the fixed
+It declines **0.213%** of real customers outright, against 0.754% for the fixed
 threshold, while stopping or challenging 77.4% of all fraud. Note that both decline rates
 rose once the linkage block was added: the detector is genuinely more confident on real
 fraud, so blocking becomes economically correct more often. That is the policy working,
@@ -229,11 +245,11 @@ Recall at 0.1% false positives on real legitimate traffic, by segment:
 
 | segment | recall |
 |---|---|
-| unseen adaptive attacks (our red team) | **94.3%** |
-| real IEEE-CIS fraud | **20.0%** |
+| unseen adaptive attacks (our red team) | **67.8%** |
+| real IEEE-CIS fraud | **20.5%** |
 
 Real fraud was **3.6%** before the linkage block was added — see
-[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts). It is now 20.0%,
+[Mounting attacks on real accounts](#mounting-attacks-on-real-accounts). It is now 20.5%,
 a 5.5x lift, and adaptive-attack recall paid 4.5 points for it: the detector has strong
 real-fraud features now and leans on them. That trade is visible rather than hidden, and
 it is the right one for a submission that has to work on real payments.
@@ -254,9 +270,9 @@ false-positive budget:
 
 | variant | unseen attack family | real IEEE-CIS fraud |
 |---|---|---|
-| **supervised only** | **0.8840** | 0.1820 |
-| max fusion (either arm flags) | 0.8345 ✗ | 0.1362 ✗ |
-| stacked (anomaly score as a feature) | 0.8655 ✗ | 0.1864 |
+| **supervised only** | **0.3885** | 0.1702 |
+| max fusion (either arm flags) | 0.3075 ✗ | 0.1261 ✗ |
+| stacked (anomaly score as a feature) | 0.3760 ✗ | 0.1582 ✗ |
 
 **The anomaly arm alone scores 0.000 on unseen attacks and 0.006 on real fraud.** Both
 fusions now lose: `max` badly, stacking by 1.85 points on unseen families for +0.4 on
@@ -264,8 +280,10 @@ real fraud. It also costs 32MB of the 34MB model footprint.
 
 **This verdict changed, and the change is the point.** On the earlier twelve-feature
 space, stacking was worth +1.25 points and we shipped it. Once the linkage block arrived
-and real-fraud recall went from 3.6% to 20%, the supervised arm had enough signal that an
-outlier score added nothing but false positives. A component that earns its place at one
+and real-fraud recall went from 3.6% to 20.5%, the supervised arm had enough signal that
+an outlier score added nothing but false positives. The module docstring did not keep up
+and kept recommending stacking for several commits after the script had stopped agreeing;
+the recommendation is now derived from the two numbers rather than written beside them. A component that earns its place at one
 stage of a project can stop earning it at the next, and the only way to know is to keep
 re-running the measurement rather than trusting the decision that was once correct.
 **Neither fusion is used by default now.** Both remain in the repo so the result stays
@@ -347,10 +365,10 @@ q0.5%/q99.5% envelope would silently rewrite the issuer's own view of the card.
 
 | | before | after |
 |---|---|---|
-| real IEEE-CIS fraud, recall @ 0.1% FPR | 3.6% | **20.0%** |
-| unseen adaptive attacks | 98.8% | 94.3% |
-| mimicry vector, KS distance from legit | 0.361 | **0.223** |
-| fraud loss avoided by the policy | 62.3% | **68.3%** |
+| real IEEE-CIS fraud, recall @ 0.1% FPR | 3.6% | **20.5%** |
+| unseen adaptive attacks | 98.8% | 67.8% |
+| mimicry vector, KS distance from legit | 0.361 | **0.174** |
+| fraud loss avoided by the policy | 62.3% | **71.6%** |
 
 Fidelity improved sharply because sixteen of twenty-six features are now literally real
 values. Adaptive-attack recall paid 4.5 points, which is the honest consequence of the
@@ -373,15 +391,29 @@ and it is why adding this block did not inflate our own numbers.
 four views of one timeline. Sampling them independently produces transactions that cannot
 exist — and it did:
 
-| | violates the 1h rule | violates the 24h rule |
+| | violates the 1h rule | 1h count > 24h count |
 |---|---|---|
-| `threshold_hugging` (hero vector), before | 69.9% | **100%** |
+| `threshold_hugging` (hero vector), before | 69.9% | — |
+| every vector after `render()`, but **through the old optimizer** | 59.2 – 93.2% | 13.4 – 42.4% |
 | real IEEE-CIS traffic | 0% | 0% |
-| every vector, now | **0%** | **0%** |
+| **every vector, through the optimizer, now** | **0%** | **0%** |
 
 *The rule: if k transactions happened in the last hour, the previous one was at most an
-hour ago.* The hero vector was physically impossible in every single row. Real traffic
-never is, because it is derived from timelines.
+hour ago. And a one-hour count cannot exceed the twenty-four-hour window containing it.*
+
+The second row is the one worth dwelling on. Deriving behaviour from a timeline fixed the
+renderer, and for a while that was reported as the whole fix — because the consistency
+check ran on the seed batch. But the evasion optimizer then perturbed `velocity_1h`,
+`velocity_24h` and `time_since_last_txn_min` as three independent scalars, and its output
+is what becomes the benchmark, the fidelity population and the rows added to training. So
+nothing downstream was ever measured on a coherent transaction, and the suite stayed green
+throughout, because no test looked at the optimizer's output.
+
+The optimizer now searches over the timeline itself — when to transact and for how much —
+and re-derives the rest through the same `chhal.behaviour.derive` applied to all 590,540
+real transactions. `tests/test_contract.py::test_the_optimizer_cannot_emit_an_impossible_transaction`
+asserts it on optimized output for every vector, and `results/summary.json` reports it on
+the shipped benchmark. This is measured, not argued.
 
 So a vector now declares a `TemporalProfile` — how many accounts, how many transactions
 each, how far apart, how the amount moves — and the generator lays out an actual
@@ -420,7 +452,7 @@ python scripts/latency_check.py
 
 | | p50 | p95 | p99 |
 |---|---|---|---|
-| **full path, single transaction** | **1.26 ms** | 1.33 ms | **1.45 ms** |
+| **full path, single transaction** | **1.24 ms** | 1.27 ms | **1.29 ms** |
 
 **~35× headroom** against a 50ms risk-decision budget at p99. Batch throughput is
 **171,344 txns/sec** (5.8 µs each) at a batch of 10,000 — that is the nightly-rescoring

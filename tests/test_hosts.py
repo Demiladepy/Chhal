@@ -101,18 +101,47 @@ def test_issuer_side_features_are_inherited_not_invented(V, base, pool):
 
 
 def test_the_attacker_cannot_move_inherited_features(base, pool):
-    """The evasion optimizer must not be able to optimise over the issuer's own view."""
-    from chhal.contract import ATTACKER_CONTROLLED
+    """The evasion optimizer must not be able to optimise over the issuer's own view.
+
+    One inherited column is deliberately exempt. `account_age_days` is not frozen at the
+    value the host had; it advances with the clock, so an attacker who waits three weeks
+    longer before using the card faces a card that is genuinely three weeks older. They
+    still cannot SET it — they set the timing, and the age follows, exactly as velocity
+    follows. Every other issuer-side signal must come out byte-identical.
+    """
+    from chhal.contract import ATTACKER_CONTROLLED, ATTACKER_DIRECT
     assert not (set(INHERITED_FEATURES) & set(ATTACKER_CONTROLLED))
+    assert not (set(INHERITED_FEATURES) & set(ATTACKER_DIRECT))
     prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
     from chhal.detector import Detector
     from chhal.optimizer import EvasionOptimizer
     det = Detector(seed=1).fit(base.train)
     batch = ALL_VECTORS[1]().calibrate(prof, pool).batch(200, 0, np.random.default_rng(5))
+    frozen = [c for c in INHERITED_FEATURES if c != "account_age_days"]
     before = batch.transactions[INHERITED_FEATURES].copy()
     after = EvasionOptimizer(base.feature_stats).optimize(
         batch, det, np.random.default_rng(5)).transactions[INHERITED_FEATURES]
-    pd.testing.assert_frame_equal(before.reset_index(drop=True), after.reset_index(drop=True))
+    pd.testing.assert_frame_equal(before[frozen].reset_index(drop=True),
+                                  after[frozen].reset_index(drop=True))
+    # the one exempt column may move, but only ever forwards from a real account's age
+    assert (after["account_age_days"] >= 0).all()
+
+
+def test_the_optimizer_cannot_invent_a_host(base, pool):
+    """Moving the timeline must not let the search reach a card that does not exist."""
+    from chhal.detector import Detector
+    from chhal.optimizer import EvasionOptimizer
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    det = Detector(seed=1).fit(base.train)
+    batch = ALL_VECTORS[2]().calibrate(prof, pool).batch(200, 0, np.random.default_rng(11))
+    adapted = EvasionOptimizer(base.feature_stats).optimize(
+        batch, det, np.random.default_rng(11))
+    tl = adapted.timeline
+    atk = tl["is_attack"].to_numpy()
+    last_real = (pd.Series(np.where(atk, np.nan, tl["timestamp_s"]))
+                 .groupby(tl["entity"]).transform("max").to_numpy())
+    assert (tl["timestamp_s"].to_numpy()[atk] > last_real[atk]).all(), (
+        "an optimized attack reached back into its host's real history")
 
 
 def test_account_age_advances_while_the_attacker_holds_the_card(base, pool):

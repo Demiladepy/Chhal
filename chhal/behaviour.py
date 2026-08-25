@@ -109,3 +109,38 @@ def consistency_violations(df: pd.DataFrame) -> dict:
                                     & (df["time_since_last_txn_min"] > 1440)).mean()),
         "velocity_1h_exceeds_24h": float((df["velocity_1h"] > df["velocity_24h"]).mean()),
     }
+
+
+def assemble_frame(entity: np.ndarray, timestamp_s: np.ndarray, amount: np.ndarray,
+                   is_attack: np.ndarray, inherited: np.ndarray,
+                   inherited_columns) -> pd.DataFrame:
+    """Feature rows for every transaction in a campaign, minus the attacker's own flags.
+
+    One function, used by the red team when it renders a campaign and by the evasion
+    optimizer when it moves one. If these two ever disagreed, the optimizer's output
+    would stop being comparable with the seed it came from, and the consistency the
+    campaign architecture buys would be lost at exactly the step that matters.
+
+    The host account's real history must be present in the input: velocity counts and
+    amount_to_avg_ratio are measured against it. Rows are returned for the whole
+    campaign; callers keep `is_attack`.
+    """
+    beh = derive(entity, timestamp_s, amount)
+    df = pd.DataFrame({
+        "amount": amount,
+        "hour": hour_of(timestamp_s),
+        "day_of_week": day_of_week_of(timestamp_s),
+        **{c: beh[c].to_numpy() for c in beh.columns},
+    })
+    for j, col in enumerate(inherited_columns):
+        df[col] = inherited[:, j]
+
+    # The card keeps ageing while the attacker holds it. The inherited age was read at
+    # the host's LAST real transaction (hosts.py), so that is the instant the clock
+    # starts from — not the account's first-ever transaction, whose span is already
+    # inside the inherited value and would otherwise be counted twice.
+    last_real = (pd.Series(np.where(is_attack, np.nan, timestamp_s))
+                 .groupby(entity).transform("max").to_numpy())
+    df["account_age_days"] = df["account_age_days"] + np.maximum(
+        timestamp_s - last_real, 0.0) / 86_400.0
+    return df

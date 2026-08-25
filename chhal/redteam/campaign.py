@@ -49,6 +49,34 @@ class Campaigns:
     is_attack: np.ndarray   # False for the host's real transactions
     inherited: np.ndarray   # (n_rows, len(INHERITED_FEATURES)) — the host's issuer-side state
 
+    def truncate_to(self, n_attack_rows: int) -> "Campaigns":
+        """Keep exactly the first `n_attack_rows` attack rows, and drop what follows.
+
+        Campaigns are generated until AT LEAST n attack rows exist, so the last one
+        usually overshoots. Cutting here rather than after the features are built keeps
+        the timeline and the feature rows in one-to-one correspondence, which is what
+        lets the optimizer re-derive instead of perturbing.
+
+        Safe to do before deriving: every behavioural feature looks only BACKWARD within
+        an account (velocity counts strictly-prior transactions, the gap looks at the
+        previous one, amount_to_avg_ratio at a prefix sum), so removing trailing rows
+        cannot change the value of any row that survives.
+        """
+        atk_pos = np.flatnonzero(self.is_attack)
+        if len(atk_pos) <= n_attack_rows:
+            return self
+        cut = atk_pos[n_attack_rows]          # first row we no longer want
+        keep = np.ones(len(self.entity), bool)
+        keep[cut:] = False
+        # rows after the cut belong to the final, partially-used campaign only
+        return Campaigns(
+            entity=self.entity[keep],
+            timestamp_s=self.timestamp_s[keep],
+            amount=self.amount[keep],
+            is_attack=self.is_attack[keep],
+            inherited=self.inherited[keep],
+        )
+
 
 def _log_uniform(lo: float, hi: float, n: int, rng: np.random.Generator) -> np.ndarray:
     return np.exp(rng.uniform(np.log(max(lo, 1e-6)), np.log(max(hi, 1e-6)), n))

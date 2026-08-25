@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp
 
-from .contract import ATTACKER_CONTROLLED, FEATURE_COLUMNS
+from .contract import ATTACKER_DIRECT, DERIVED_FEATURES, FEATURE_COLUMNS
 
 MIMICRY_VECTOR = "threshold_hugging"
 
@@ -59,23 +59,47 @@ def ks_table(reference: pd.DataFrame, sample: pd.DataFrame,
     return pd.DataFrame(rows).sort_values("ks_stat", ascending=False).reset_index(drop=True)
 
 
-def on_manifold_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame) -> float:
-    """Fraction of (row, attacker-controlled feature) cells inside the manifold bounds.
+def _cell_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame, columns) -> float:
+    lo, hi = feature_stats.loc[0.005], feature_stats.loc[0.995]
+    cols = [c for c in columns if c in sample.columns and c in lo.index]
+    if not cols or len(sample) == 0:
+        return 1.0
+    inside = np.ones((len(sample), len(cols)), dtype=bool)
+    for j, col in enumerate(cols):
+        inside[:, j] = (sample[col] >= lo[col] - 1e-9) & (sample[col] <= hi[col] + 1e-9)
+    return float(inside.mean())
 
-    Only attacker-controlled columns: the rest of an attack row is derived from a real
-    timeline or inherited from a real account, so it is plausible by construction and the
-    guardrail neither governs nor touches it.
+
+def on_manifold_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame) -> float:
+    """Fraction of (row, directly-set feature) cells inside the manifold bounds.
+
+    Scope is the four features an attacker actually SETS — amount, the payee flag, the
+    rail, the destination. Those are the only ones the guardrail governs, and the only
+    ones it can govern: the behavioural block is recomputed from a timeline rather than
+    assigned, so there is nothing there to clip. See `derived_on_manifold_rate` for where
+    that block lands, and report the two together — quoting this number alone invites the
+    obvious question of what the other columns are doing.
 
     Note: when `sample` is the optimizer's OUTPUT, this is ~1.0 BY CONSTRUCTION — the
     optimizer hard-clips every candidate to exactly these bounds, so this only confirms
     the clip is wired correctly, not that the guardrail did meaningful work. For that,
     see `frac_off_manifold_pre_clip` in each AttackBatch.provenance (optimizer.py).
     """
-    lo, hi = feature_stats.loc[0.005], feature_stats.loc[0.995]
-    inside = np.ones((len(sample), len(ATTACKER_CONTROLLED)), dtype=bool)
-    for j, col in enumerate(ATTACKER_CONTROLLED):
-        inside[:, j] = (sample[col] >= lo[col] - 1e-9) & (sample[col] <= hi[col] + 1e-9)
-    return float(inside.mean())
+    return _cell_rate(sample, feature_stats, ATTACKER_DIRECT)
+
+
+def derived_on_manifold_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame) -> float:
+    """Fraction of DERIVED cells that happen to fall inside the legit manifold.
+
+    Deliberately not a guardrail and deliberately not ~1.0. These columns are what a
+    timeline looks like once it has happened, so constraining them would mean forbidding
+    an attack from having the shape it really has — a card-testing run that probes forty
+    times in ten minutes HAS a velocity above anything legitimate traffic shows, and
+    clipping it back into the legit envelope while still calling it card testing is the
+    lie this measurement exists to prevent. A low number here is evidence the attack is
+    aggressive, not evidence it is fake.
+    """
+    return _cell_rate(sample, feature_stats, DERIVED_FEATURES)
 
 
 def ks_by_vector(legit: pd.DataFrame, attacks: pd.DataFrame,
@@ -101,6 +125,10 @@ def fidelity_report(legit: pd.DataFrame, attacks: pd.DataFrame,
     mimic_ks = ks_table(legit, attacks[mimic_mask]) if mimic_mask.any() else pd.DataFrame()
     return {
         "on_manifold_rate": round(on_manifold_rate(attacks, feature_stats), 4),
+        # reported alongside, always: the guardrail governs what the attacker sets, and
+        # this says where the block it does NOT govern actually landed.
+        "derived_on_manifold_rate": round(
+            derived_on_manifold_rate(attacks, feature_stats), 4),
         "mimicry_vector": MIMICRY_VECTOR,
         "mimicry_mean_ks_vs_legit": float(per_vector.loc[
             per_vector["vector"] == MIMICRY_VECTOR, "mean_ks_vs_legit"].iloc[0])

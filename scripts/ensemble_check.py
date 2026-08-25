@@ -122,11 +122,21 @@ def main() -> None:
 
     d_max = df["unseen_max_fusion"].mean() - df["unseen_supervised"].mean()
     d_stk = df["unseen_stacked"].mean() - df["unseen_supervised"].mean()
+    # The verdict is DERIVED from the measurement, never asserted alongside it. An
+    # earlier version hard-coded "stacking is the variant to ship" into this string and
+    # into ensemble.py's docstring. That was true of the 12-feature space it was written
+    # for; the linkage block changed it, and the sentence stayed, so the script printed a
+    # recommendation its own two numbers contradicted.
+    best = max(("supervised", 0.0), ("max fusion", d_max), ("stacking", d_stk),
+               key=lambda kv: kv[1])[0]
     verdict = (
-        f"max fusion {d_max:+.4f} on an unseen family — rejected, it spends budget on an "
-        f"arm carrying {np.mean(carried):.1%} of catches. Stacking the anomaly score as a "
-        f"FEATURE is {d_stk:+.4f} and is the variant to ship. The arm is near-useless alone "
-        f"because attacks are on-manifold by construction — the fidelity guardrail blinds it."
+        f"max fusion {d_max:+.4f} and stacking {d_stk:+.4f} against the supervised "
+        f"detector on an unseen family. The anomaly arm carries {np.mean(carried):.1%} of "
+        f"catches and scores {alone_u:.4f} alone, because attacks are on-manifold by "
+        f"construction — the better the fidelity guarantee, the less an outlier detector "
+        f"can contribute. Ship: {best}."
+        + ("" if best != "supervised" else
+           " Neither fusion earns its 32MB; the single supervised model wins.")
     )
     print(f"\nverdict: {verdict}")
 

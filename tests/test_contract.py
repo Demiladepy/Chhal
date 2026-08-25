@@ -18,6 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from chhal.behaviour import consistency_violations
 from chhal.contract import FEATURE_COLUMNS, INTEGER_FEATURES, AttackBatch
 from chhal.data import DEFAULT_IEEE_PARQUET, load_base_data
 from chhal.detector import Detector
@@ -96,14 +97,41 @@ def test_optimizer_lowers_detector_score_and_stays_plausible():
     after = detector.score(adapted.transactions).mean()
 
     assert after < before, "evasion optimizer should lower the detector's fraud score"
-    # plausibility guardrail: every ATTACKER-CONTROLLED feature stays within the manifold.
-    # The rest is inherited from a real account or derived from a real timeline, and the
-    # optimizer must leave it exactly as it found it (see test_hosts.py).
-    from chhal.contract import ATTACKER_CONTROLLED
+    # Plausibility guardrail: every feature the attacker SETS stays within the manifold.
+    from chhal.contract import ATTACKER_DIRECT
     lo, hi = base.feature_stats.loc[0.005], base.feature_stats.loc[0.995]
-    for col in ATTACKER_CONTROLLED:
+    for col in ATTACKER_DIRECT:
         assert adapted.transactions[col].min() >= lo[col] - 1e-6
         assert adapted.transactions[col].max() <= hi[col] + 1e-6
+
+
+def test_the_optimizer_cannot_emit_an_impossible_transaction():
+    """The guarantee the campaign architecture buys must survive the search.
+
+    This is the test whose absence let the defect ship. The old optimizer perturbed
+    velocity_1h, velocity_24h and time_since_last_txn_min as three independent scalars,
+    so 59-93% of the rows it emitted were physically impossible — including rows claiming
+    more transactions in the last hour than in the last twenty-four. The seed batches
+    were clean and the only consistency test ran on THOSE, before the optimizer touched
+    anything, so the suite stayed green while the benchmark, the fidelity population and
+    the training additions were all incoherent.
+    """
+    base = load_base_data(seed=1, **SMALL)
+    detector = Detector(seed=1).fit(base.train)
+    opt = EvasionOptimizer(base.feature_stats)
+    rng = np.random.default_rng(1)
+
+    for vector in ALL_VECTORS:
+        seed_batch = armed(vector, base).batch(150, 1, rng)
+        adapted = opt.optimize(seed_batch, detector, rng)
+        for name, frame in (("seed", seed_batch.transactions),
+                            ("optimized", adapted.transactions)):
+            viol = consistency_violations(frame)
+            assert viol["velocity_1h_exceeds_24h"] == 0.0, (
+                f"{vector.__name__} {name}: a 1-hour count cannot exceed the 24-hour "
+                f"window that contains it — {viol}")
+            assert viol["violates_1h_rule"] == 0.0, f"{vector.__name__} {name}: {viol}"
+            assert viol["violates_24h_rule"] == 0.0, f"{vector.__name__} {name}: {viol}"
 
 
 def test_loop_runs_and_produces_a_curve():
@@ -122,8 +150,10 @@ def test_loop_runs_and_produces_a_curve():
     bench = result.curve[result.curve["phase"] == "benchmark"].sort_values("iteration")
     assert bench["recall"].iloc[-1] > bench["recall"].iloc[0] + 0.3
 
-    # fidelity is populated and the guardrail keeps attacks on the manifold
+    # fidelity is populated and the guardrail keeps what the attacker SETS on the
+    # manifold. The derived block is reported, not constrained — see fidelity.py.
     assert result.fidelity["on_manifold_rate"] > 0.98
+    assert 0.0 <= result.fidelity["derived_on_manifold_rate"] <= 1.0
     assert 0.0 <= result.fidelity["mimicry_mean_ks_vs_legit"] <= 1.0
     assert set(result.fidelity_per_vector.columns) == {
         "vector", "mean_ks_vs_legit", "features_like_legit"}
