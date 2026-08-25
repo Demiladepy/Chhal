@@ -39,7 +39,7 @@
     }
   },
   "iterations": 8,
-  "runtime_seconds": 65.2,
+  "runtime_seconds": 66.2,
   "config": {
     "iterations": 8,
     "attacks_per_vector": 400,

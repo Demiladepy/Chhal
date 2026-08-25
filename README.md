@@ -60,13 +60,13 @@ Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~66s):
 | metric | baseline | after the loop |
 |---|---|---|
 | recall @ **0.1%** of legit flagged | 0.25% | **83.80%** |
-| recall @ 0.5% | 0.40% | 99.55% |
-| recall @ 1.0% | 0.40% | 99.75% |
+| recall @ 0.5% | 0.90% | 91.35% |
+| recall @ 1.0% | 1.35% | 92.05% |
 | **PR AUC** | 0.0176 | **0.9275** |
 | alert rate (share of all traffic) | 0.10% | 1.259% |
 
-For comparison, the naive 0.5 cutoff on the same run: F1 0.0065 → 0.8937, ROC AUC 0.9997, FP on
-legit 0.32%. The ROC number is the one to distrust.
+For comparison, the naive 0.5 cutoff on the same run: F1 0.0097 → 0.8120, ROC AUC 0.9951, FP on
+legit 0.46%. The ROC number is the one to distrust.
 
 The baseline catching almost nothing is not a broken detector — the benchmark attacks
 were optimised specifically to evade it, which is the optimizer doing its job.
@@ -502,10 +502,10 @@ python scripts/latency_check.py
 
 | | p50 | p95 | p99 |
 |---|---|---|---|
-| **full path, single transaction** | **1.24 ms** | 1.27 ms | **1.29 ms** |
+| **full path, single transaction** | **1.26 ms** | 1.35 ms | **1.42 ms** |
 
 **~35× headroom** against a 50ms risk-decision budget at p99. Batch throughput is
-**171,344 txns/sec** (5.8 µs each) at a batch of 10,000 — that is the nightly-rescoring
+**172,740 txns/sec** (5.8 µs each) at a batch of 10,000 — that is the nightly-rescoring
 number, not the live-auth one, and should not be quoted as such.
 
 Model footprint is 34MB, of which the anomaly arm is 32MB — dropping it, which the
