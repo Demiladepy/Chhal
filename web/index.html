@@ -267,7 +267,7 @@
   <div class="wrap">
     <div class="stats reveal">
       <div class="stat">
-        <div class="num" data-to="83.6" data-suffix="%" data-dec="1">0%</div>
+        <div class="num" data-to="84.9" data-suffix="%" data-dec="1">0%</div>
         <div class="lbl">Benchmark recall after the loop, at 0.1% of real customers flagged<br>(from 0% on a static model)</div>
       </div>
       <div class="stat">
@@ -275,11 +275,11 @@
         <div class="lbl">On-manifold rate on attacker-controlled features — attacks stay executable after evasion</div>
       </div>
       <div class="stat">
-        <div class="num" data-to="12.2" data-suffix="%" data-dec="1">0%</div>
+        <div class="num" data-to="33.4" data-suffix="%" data-dec="1">0%</div>
         <div class="lbl">Guardrail binding rate — perturbations pulled back to plausibility</div>
       </div>
       <div class="stat">
-        <div class="num" data-to="0.66" data-suffix="%" data-dec="2">0%</div>
+        <div class="num" data-to="0.68" data-suffix="%" data-dec="2">0%</div>
         <div class="lbl">Alert rate on real traffic at the 0.1% operating point — what an ops queue actually sees</div>
       </div>
     </div>
@@ -389,7 +389,7 @@
       <div class="col good reveal">
         <h4>Chhal, closed loop</h4>
         <ul>
-          <li><span class="mk">✓</span> Benchmark recall climbs from 0% to 83.6% on attacks the model never trained on, at a 0.1% false-positive budget — a budget the run verifies it honoured (0.0996% realised).</li>
+          <li><span class="mk">✓</span> Benchmark recall climbs from 0% to 84.9% on attacks the model never trained on, at a 0.1% false-positive budget — a budget the run verifies it honoured (0.0996% realised).</li>
           <li><span class="mk">✓</span> Each gap the red team finds becomes the next training signal — the target moves.</li>
           <li><span class="mk">✓</span> Fidelity is a number: on-manifold rate and per-vector KS versus real traffic.</li>
           <li><span class="mk">✓</span> A frozen held-out split proves generalisation, not memorisation. No leakage.</li>
@@ -417,40 +417,40 @@
           <tr class="hero-row">
             <td class="vname">threshold_hugging</td>
             <td>Sequences tuned just under every velocity/amount rule, mimicking the victim</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:35%"></span></span>35.4%</div></td>
-            <td>0.16</td><td><span class="tag stealth">stealthiest</span></td>
-          </tr>
-          <tr>
-            <td class="vname">upi_collect</td>
-            <td>🇮🇳 Fraudulent UPI collect-request, then rapid drain through fresh VPAs</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:95%"></span></span>94.8%</div></td>
-            <td>0.19</td><td><span class="tag">social-eng</span></td>
-          </tr>
-          <tr>
-            <td class="vname">bustout</td>
-            <td>Synthetic identity ages a clean account, then maxes it in a burst</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:95%"></span></span>94.6%</div></td>
-            <td>0.23</td><td><span class="tag">overt</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:67%"></span></span>66.6%</div></td>
+            <td>0.148</td><td><span class="tag stealth">stealthiest</span></td>
           </tr>
           <tr>
             <td class="vname">mule_fanout</td>
             <td>One operator, many mule accounts, every one moving inside the same six hours</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:94%"></span></span>94.2%</div></td>
-            <td>0.24</td><td><span class="tag">coordinated</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:87%"></span></span>87.0%</div></td>
+            <td>0.215</td><td><span class="tag">coordinated</span></td>
+          </tr>
+          <tr>
+            <td class="vname">upi_collect</td>
+            <td>🇮🇳 Fraudulent UPI collect-request, then rapid drain through fresh VPAs</td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:91%"></span></span>91.2%</div></td>
+            <td>0.218</td><td><span class="tag">social-eng</span></td>
+          </tr>
+          <tr>
+            <td class="vname">bustout</td>
+            <td>Synthetic identity ages a clean account, then maxes it in a burst</td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:83%"></span></span>83.4%</div></td>
+            <td>0.249</td><td><span class="tag">overt</span></td>
           </tr>
           <tr>
             <td class="vname">card_testing</td>
             <td>Agentic BIN probing, sized to stay under velocity limits</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:99%"></span></span>99.2%</div></td>
-            <td>0.31</td><td><span class="tag">overt</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:96%"></span></span>96.2%</div></td>
+            <td>0.331</td><td><span class="tag">overt</span></td>
           </tr>
         </tbody>
       </table>
     </div>
     <p class="loop-note" style="margin-top:20px">
-      The ends of the KS ranking hold: the stealthiest vector is caught a third as often as the
-      most overt one. The middle three sit within half a point of each other and KS does not
-      separate them. Fidelity predicts the extremes, not the ordering — and we say that rather
+      The ends of the KS ranking hold: the stealthiest vector is still the hardest, and the
+      most overt the easiest. The middle three sit within eight points of each other in an
+      order KS does not predict. Fidelity predicts the extremes, not the ordering — and we say that rather
       than the tidier version, because the tidier version stopped being true at five vectors.
     </p>
   </div>
