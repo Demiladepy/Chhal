@@ -85,6 +85,21 @@ class BaseProfile:
 
 
 class AttackVector(ABC):
+    # How often this vector transacts with a payee the account has not paid before.
+    # A PROBABILITY, not a constant, and that distinction is the whole point. Four of
+    # the five vectors used to hard-code the flag to 1 on 100% of rows, which is not
+    # what fraud looks like — a bust-out reuses a drop account, a card tester hits a
+    # merchant twice, an operator sends to the same mule again. It was also a
+    # self-inflicted tell: the ablation in scripts/coordination_check.py measured the
+    # detector gaining 26.3 +/- 7.3 points of recall from that one deterministic
+    # column, on a feature that in real IEEE-CIS traffic sits on 41.2% of LEGITIMATE
+    # transactions and only 35.7% of frauds — slightly LESS common in real fraud than
+    # in ordinary spending. A vector that sets it every time has painted a target on
+    # itself, and the recall it loses to that target was never really earned.
+    # Declared per class rather than in a lookup keyed by vector_id, so a subclass
+    # built for an ablation inherits it instead of raising.
+    new_payee_rate: float = 0.5
+
     vector_id: str = "abstract"
     storyline: str = ""
 

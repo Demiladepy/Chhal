@@ -54,6 +54,7 @@ class ThresholdHugging(AttackVector):
     than asserted.
     """
 
+    new_payee_rate = 0.30    # the victim's usual payees, with the occasional new one
     vector_id = "threshold_hugging"
     storyline = (
         "The attacker profiles the victim's own spending and cadence from the card's "
@@ -72,7 +73,7 @@ class ThresholdHugging(AttackVector):
     def static_features(self, n, rng):
         p = self.p
         return {
-            "is_new_beneficiary": np.zeros(n, int),                 # known payee
+            "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
             "is_cross_border": np.zeros(n, int),
             "channel_code": p.categorical("channel_code", n, rng),  # real channel mix
         }
@@ -81,6 +82,7 @@ class ThresholdHugging(AttackVector):
 class SyntheticBustout(AttackVector):
     """Age a synthetic-identity account to look clean, then max it out in a burst."""
 
+    new_payee_rate = 0.80    # burst to fresh beneficiaries, on an account with history
     vector_id = "bustout"
     storyline = (
         "A GenAI synthetic identity (face + docs + backstory) passes onboarding, ages "
@@ -97,7 +99,7 @@ class SyntheticBustout(AttackVector):
     def static_features(self, n, rng):
         p = self.p
         return {
-            "is_new_beneficiary": np.ones(n, int),
+            "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
             # elevated vs the 0.7% legit / 2.2% fraud base rate, because cashing out
             # abroad is this vector's point — but not so high it leaves the manifold.
             "is_cross_border": p.bernoulli(0.10, n, rng),
@@ -108,6 +110,7 @@ class SyntheticBustout(AttackVector):
 class CardTesting(AttackVector):
     """Intelligent BIN/card-testing that adapts probe size to velocity limits."""
 
+    new_payee_rate = 0.90    # many distinct merchants, but probes do repeat
     vector_id = "card_testing"
     storyline = (
         "An agent probes stolen card ranges with many micro-authorizations, spacing "
@@ -122,7 +125,7 @@ class CardTesting(AttackVector):
     def static_features(self, n, rng):
         p = self.p
         return {
-            "is_new_beneficiary": np.ones(n, int),
+            "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
             "is_cross_border": p.bernoulli(0.08, n, rng),
             "channel_code": np.zeros(n, int),                       # card rail
         }
@@ -131,6 +134,7 @@ class CardTesting(AttackVector):
 class UpiCollectScam(AttackVector):
     """India rail: a fraudulent UPI collect-request followed by rapid drain."""
 
+    new_payee_rate = 0.85    # fresh VPAs per hop, though not perfectly fresh
     vector_id = "upi_collect"
     storyline = (
         "A GenAI social-engineering script tricks a victim into approving a UPI "
@@ -146,8 +150,9 @@ class UpiCollectScam(AttackVector):
     )
 
     def static_features(self, n, rng):
+        p = self.p
         return {
-            "is_new_beneficiary": np.ones(n, int),
+            "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
             "is_cross_border": np.zeros(n, int),
             "channel_code": np.ones(n, int),                        # upi rail
         }
@@ -191,6 +196,7 @@ class MuleFanout(AttackVector):
     looking like a good result.
     """
 
+    new_payee_rate = 0.75    # fresh mule destinations, though operators reuse drops
     vector_id = "mule_fanout"
     storyline = (
         "One operator drives a network of mule accounts opened or bought at scale. Each "
@@ -211,7 +217,7 @@ class MuleFanout(AttackVector):
         p = self.p
         return {
             # the one thing a mule account cannot avoid: the money goes somewhere new
-            "is_new_beneficiary": np.ones(n, int),
+            "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
             # kept near the other vectors on purpose. Pushing it up makes the vector easy
             # to catch on a single column and destroys what it is here to measure.
             "is_cross_border": p.bernoulli(0.10, n, rng),

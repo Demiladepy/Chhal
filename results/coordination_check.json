@@ -15,116 +15,146 @@
   "protocol": "single-pass detector (one round of attacks, one retrain) per seed, so the variants differ in exactly one thing; deltas are computed per seed and then averaged, so the spread is of the difference",
   "recall_mean": {
     "threshold_hugging": {
-      "0.001": 0.0073,
-      "0.01": 0.0193,
-      "0.05": 0.0857
+      "0.001": 0.0207,
+      "0.01": 0.086,
+      "0.05": 0.2083
     },
     "threshold_hugging_no_mimicry": {
-      "0.001": 0.0023,
-      "0.01": 0.0137,
-      "0.05": 0.072
+      "0.001": 0.0117,
+      "0.01": 0.0663,
+      "0.05": 0.2043
     },
     "mule_fanout": {
-      "0.001": 0.617,
-      "0.01": 0.851,
-      "0.05": 0.9373
+      "0.001": 0.6053,
+      "0.01": 0.8423,
+      "0.05": 0.936
     },
     "mule_fanout_uncoordinated": {
-      "0.001": 0.68,
-      "0.01": 0.8667,
-      "0.05": 0.9303
+      "0.001": 0.6227,
+      "0.01": 0.867,
+      "0.05": 0.941
     },
     "mule_fanout_known_payee": {
-      "0.001": 0.3537,
-      "0.01": 0.8,
-      "0.05": 0.881
+      "0.001": 0.3763,
+      "0.01": 0.77,
+      "0.05": 0.878
+    },
+    "mule_fanout_always_new_payee": {
+      "0.001": 0.6617,
+      "0.01": 0.872,
+      "0.05": 0.9543
     }
   },
   "recall_sd": {
     "threshold_hugging": {
-      "0.001": 0.0044,
-      "0.01": 0.0188,
-      "0.05": 0.0307
+      "0.001": 0.0142,
+      "0.01": 0.0254,
+      "0.05": 0.0423
     },
     "threshold_hugging_no_mimicry": {
-      "0.001": 0.0033,
-      "0.01": 0.0094,
-      "0.05": 0.0206
+      "0.001": 0.0072,
+      "0.01": 0.021,
+      "0.05": 0.0239
     },
     "mule_fanout": {
-      "0.001": 0.1,
-      "0.01": 0.0336,
-      "0.05": 0.0247
+      "0.001": 0.0768,
+      "0.01": 0.0483,
+      "0.05": 0.0104
     },
     "mule_fanout_uncoordinated": {
-      "0.001": 0.0519,
-      "0.01": 0.0226,
-      "0.05": 0.0132
+      "0.001": 0.0533,
+      "0.01": 0.0403,
+      "0.05": 0.0179
     },
     "mule_fanout_known_payee": {
-      "0.001": 0.1259,
-      "0.01": 0.0495,
-      "0.05": 0.0398
+      "0.001": 0.0431,
+      "0.01": 0.0381,
+      "0.05": 0.0414
+    },
+    "mule_fanout_always_new_payee": {
+      "0.001": 0.031,
+      "0.01": 0.0249,
+      "0.05": 0.0088
     }
   },
   "comparisons": {
     "per-victim mimicry": {
-      "read_at_fpr": 0.05,
-      "mean_pp": -1.37,
-      "sem_pp": 0.81,
+      "read_at_fpr": 0.001,
+      "mean_pp": -0.9,
+      "sem_pp": 0.96,
       "beats_its_own_noise": false,
       "all_operating_points": {
         "0.001": [
-          -0.5,
-          0.37
+          -0.9,
+          0.96
         ],
         "0.01": [
-          -0.57,
-          1.05
+          -1.97,
+          2.21
         ],
         "0.05": [
-          -1.37,
-          0.81
+          -0.4,
+          2.96
         ]
       }
     },
     "coordination": {
-      "read_at_fpr": 0.001,
-      "mean_pp": 6.3,
-      "sem_pp": 2.77,
+      "read_at_fpr": 0.01,
+      "mean_pp": 2.47,
+      "sem_pp": 0.81,
       "beats_its_own_noise": true,
       "all_operating_points": {
         "0.001": [
-          6.3,
-          2.77
+          1.73,
+          1.73
         ],
         "0.01": [
-          1.57,
-          2.01
+          2.47,
+          0.81
         ],
         "0.05": [
-          -0.7,
-          1.32
+          0.5,
+          0.58
         ]
       }
     },
     "the new-beneficiary flag": {
-      "read_at_fpr": 0.01,
-      "mean_pp": -5.1,
-      "sem_pp": 1.4,
+      "read_at_fpr": 0.001,
+      "mean_pp": -22.9,
+      "sem_pp": 3.4,
       "beats_its_own_noise": true,
       "all_operating_points": {
         "0.001": [
-          -26.33,
-          7.29
+          -22.9,
+          3.4
         ],
         "0.01": [
-          -5.1,
-          1.4
+          -7.23,
+          2.25
         ],
         "0.05": [
+          -5.8,
+          1.71
+        ]
+      }
+    },
+    "...and hard-coding it to 1": {
+      "read_at_fpr": 0.05,
+      "mean_pp": -1.83,
+      "sem_pp": 0.4,
+      "beats_its_own_noise": true,
+      "all_operating_points": {
+        "0.001": [
           -5.63,
-          2.07
+          3.05
+        ],
+        "0.01": [
+          -2.97,
+          1.33
+        ],
+        "0.05": [
+          -1.83,
+          0.4
         ]
       }
     }

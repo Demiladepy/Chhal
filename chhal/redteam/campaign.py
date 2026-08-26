@@ -143,6 +143,16 @@ def _host_gaps(history_ts: np.ndarray, n: int, rng: np.random.Generator) -> np.n
     return np.maximum(np.quantile(gaps, rng.uniform(0.25, 0.75, n)), 1.0)
 
 
+# How often a campaign starts at an hour outside its vector's usual band. Without this
+# a narrow band plus short hops meant a vector never appeared at some hours at all:
+# `upi_collect` emitted ZERO transactions in thirteen of the twenty-four, so the single
+# stump `hour < 12` excluded the entire vector. Real legitimate traffic has no empty
+# hour — its quietest is still 0.36% of volume — and neither does real fraud. The story
+# survives the fix, because scams do catch people at four in the morning; it is only
+# the certainty that was fake.
+OFF_BAND_START_P = 0.15
+
+
 def _takeover_time(last_real_ts: int, hour_band: tuple[float, float],
                    base_profile, rng: np.random.Generator,
                    host_hours: np.ndarray | None = None,
@@ -157,6 +167,8 @@ def _takeover_time(last_real_ts: int, hour_band: tuple[float, float],
     """
     if host_hours is not None and len(host_hours):
         target = int(rng.choice(host_hours)) % 24
+    elif rng.random() < OFF_BAND_START_P:
+        target = int(base_profile.band("hour", 0.0, 1.0, 1, rng)[0]) % 24
     else:
         target = int(base_profile.band("hour", *hour_band, 1, rng)[0]) % 24
     if earliest is None:
@@ -164,6 +176,42 @@ def _takeover_time(last_real_ts: int, hour_band: tuple[float, float],
                     + int(rng.integers(0, MAX_TAKEOVER_WAIT_DAYS * 86_400)))
     delta = (target - int(hour_of(np.array([earliest]))[0])) % 24
     return earliest + delta * 3_600 + int(rng.integers(0, 3_600))
+
+
+# A gap shorter than this leaves the attacker no real choice about the hour: a probe
+# ninety seconds after the last one happens when it happens. Only gaps longer than this
+# get their hour pulled back onto the victim's own clock.
+FREE_CHOICE_GAP_S = 6 * 3_600.0
+
+
+def _snap_hours(a_ts: np.ndarray, host_hours: np.ndarray | None,
+                rng: np.random.Generator) -> np.ndarray:
+    """Pull each attack's hour-of-day back onto the hours this card is actually used at.
+
+    Only the FIRST transaction used to be snapped, so a campaign's clock diffused: after
+    two or three log-uniform gaps the hero vector was spread almost uniformly over the
+    day, putting 4.4% of its volume at 03:00 where real legitimate traffic has 0.44%.
+    For the vector whose entire claim is that it looks normal for its victim, that was
+    the worst place to leak — and it leaked on the one column nobody was watching.
+
+    Bursts are left alone (see FREE_CHOICE_GAP_S), and a shift is only accepted if it
+    keeps the timeline strictly ordered, so nothing downstream that assumes monotone
+    timestamps can break.
+    """
+    if host_hours is None or not len(host_hours) or len(a_ts) < 2:
+        return a_ts
+    out = a_ts.astype(np.float64).copy()
+    hours = hour_of(out.astype(np.int64))
+    for i in range(1, len(out)):
+        if out[i] - out[i - 1] < FREE_CHOICE_GAP_S:
+            continue
+        shift = (int(rng.choice(host_hours)) - int(hours[i])) % 24
+        if shift > 12:
+            shift -= 24                      # nearest such hour, not always the next one
+        cand = out[i] + shift * 3_600.0
+        if cand > out[i - 1] + 60.0:
+            out[i] = cand
+    return out
 
 
 def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
@@ -207,6 +255,8 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
         # gaps came from the vector's own band and became weeks once they came from the
         # victim's — long enough to break a coordinated window apart.
         a_ts = start + np.r_[0.0, np.cumsum(a_gaps[:-1])]
+        if profile.mimic_host:
+            a_ts = _snap_hours(a_ts, host_hours, rng)
 
         if profile.mimic_host and len(host.history_amount) >= MIN_HISTORY_TO_MIMIC:
             a_amt = _host_amounts(host.history_amount, *profile.amount_band, n_a, rng)

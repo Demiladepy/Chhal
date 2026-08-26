@@ -22,6 +22,7 @@ Three variants, one detector, one operating point:
     mule_fanout                      as shipped
     mule_fanout_uncoordinated        coordination OFF, everything else byte-identical
     mule_fanout_known_payee          is_new_beneficiary forced to 0, otherwise identical
+    mule_fanout_always_new_payee     is_new_beneficiary forced to 1 — the old behaviour
 
 The first pair asks whether per-victim mimicry is doing anything, or whether the hero
 vector would be just as hard to catch drawing from the population. The second pair asks
@@ -92,7 +93,24 @@ def _variants():
             d["is_new_beneficiary"] = np.zeros(n, int)
             return d
 
-    return [hero, NoMimicry, mf, Uncoordinated, KnownPayee]
+    class AlwaysNewPayee(mf):
+        """The vector as it USED to ship: the flag hard-coded to 1 on every single row.
+
+        Kept as a variant rather than deleted, because the difference between this and
+        the shipped 0.75 is the only honest measure of what that fix was worth. The
+        feature carries real signal for this vector either way — a mule fan-out does
+        send money somewhere new — so the question is not whether the detector may use
+        it, but how much of its recall came from a determinism no real campaign has.
+        """
+
+        vector_id = "mule_fanout_always_new_payee"
+
+        def static_features(self, n, rng):
+            d = mf.static_features(self, n, rng)
+            d["is_new_beneficiary"] = np.ones(n, int)
+            return d
+
+    return [hero, NoMimicry, mf, Uncoordinated, KnownPayee, AlwaysNewPayee]
 
 
 def _one_seed(base, seed: int):
@@ -164,6 +182,7 @@ def main() -> None:
         ("per-victim mimicry", "threshold_hugging_no_mimicry", "threshold_hugging"),
         ("coordination", "mule_fanout_uncoordinated", "mule_fanout"),
         ("the new-beneficiary flag", "mule_fanout_known_payee", "mule_fanout"),
+        ("...and hard-coding it to 1", "mule_fanout", "mule_fanout_always_new_payee"),
     ]
     print("\n=== what each design choice is worth to the ATTACKER ===")
     print("(points of recall the detector LOSES because the choice is switched on)")

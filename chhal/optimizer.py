@@ -214,7 +214,8 @@ class EvasionOptimizer:
                   .transform("max").to_numpy()[idx])
         return ent, ts, atk, idx, ent_a, gaps, first_of_entity, anchor
 
-    def _gap_envelope(self, seed_gaps: np.ndarray, first_of_entity: np.ndarray):
+    def _gap_envelope(self, seed_gaps: np.ndarray, first_of_entity: np.ndarray,
+                      ent_code: np.ndarray):
         """How far the attacker may re-time hops WITHIN a campaign, from the seed itself.
 
         Not from the global manifold. `time_since_last_txn_min`'s q99.5 is about three
@@ -224,24 +225,40 @@ class EvasionOptimizer:
         Those are not slower versions of the attack, they are different attacks, and a
         vector that can be re-timed into another vector is not a vector.
 
-        The seed's own gaps were drawn from the vector's declared inter-arrival
-        distribution, so they carry that shape without the optimizer needing to know
-        which vector it is holding. The attacker may go `WIDEN` times faster or slower
-        than the campaign's own pace, and no further.
+        Bounded PER CAMPAIGN, not per batch, and the difference is not cosmetic. Once
+        the hero vector started reading its cadence off each victim, one batch held
+        campaigns pacing minutes apart and campaigns pacing weeks apart; a single
+        batch-wide 95th percentile handed the fast ones the slow ones' ceiling, and the
+        optimizer walked a victim who transacts daily out to a median gap of 28 DAYS.
+        The point of per-victim mimicry is that each campaign moves at ITS victim's
+        pace, so that is the envelope it gets to move inside.
+
+        The seed's own gaps carry the vector's declared shape without the optimizer
+        needing to know which vector it is holding. The attacker may go `gap_widen`
+        times faster or slower than that campaign's own pace, and no further.
         """
-        inner = seed_gaps[~first_of_entity]
-        if len(inner) == 0:
-            return MIN_GAP_S, self._gap_ceiling
-        lo = max(float(np.percentile(inner, 5)) / self.cfg.gap_widen, MIN_GAP_S)
-        hi = min(float(np.percentile(inner, 95)) * self.cfg.gap_widen, self._gap_ceiling)
-        return lo, max(hi, lo)
+        n = len(seed_gaps)
+        lo = np.full(n, MIN_GAP_S, dtype=np.float64)
+        hi = np.full(n, self._gap_ceiling, dtype=np.float64)
+        inner = ~first_of_entity
+        if not inner.any():
+            return lo, hi
+        g = pd.DataFrame({"e": ent_code[inner], "g": seed_gaps[inner]}).groupby("e")["g"]
+        per_lo = (g.quantile(0.05) / self.cfg.gap_widen).clip(lower=MIN_GAP_S)
+        per_hi = (g.quantile(0.95) * self.cfg.gap_widen).clip(upper=self._gap_ceiling)
+        per_hi = np.maximum(per_hi, per_lo)
+        # campaigns with no inner gap keep the global fallback already in lo/hi
+        lo[inner] = per_lo.reindex(ent_code[inner]).to_numpy()
+        hi[inner] = per_hi.reindex(ent_code[inner]).to_numpy()
+        return lo, hi
 
     def _clip_gaps(self, gaps: np.ndarray, first_of_entity: np.ndarray) -> np.ndarray:
         out = np.empty_like(gaps)
         t_lo, t_hi = self._takeover_bounds
         g_lo, g_hi = self._gap_bounds
         out[first_of_entity] = np.clip(gaps[first_of_entity], t_lo, t_hi)
-        out[~first_of_entity] = np.clip(gaps[~first_of_entity], g_lo, g_hi)
+        out[~first_of_entity] = np.clip(gaps[~first_of_entity],
+                                        g_lo[~first_of_entity], g_hi[~first_of_entity])
         return out
 
     @staticmethod
@@ -272,7 +289,7 @@ class EvasionOptimizer:
 
         seed_rows = batch.transactions
         # bind the per-campaign envelopes before any clipping happens
-        self._gap_bounds = self._gap_envelope(gaps0, first_of_entity)
+        self._gap_bounds = self._gap_envelope(gaps0, first_of_entity, ent_code)
         self._bind_direct_envelope(seed_rows := batch.transactions)
 
         params = {
