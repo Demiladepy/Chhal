@@ -267,7 +267,7 @@
   <div class="wrap">
     <div class="stats reveal">
       <div class="stat">
-        <div class="num" data-to="83.4" data-suffix="%" data-dec="1">0%</div>
+        <div class="num" data-to="83.6" data-suffix="%" data-dec="1">0%</div>
         <div class="lbl">Benchmark recall after the loop, at 0.1% of real customers flagged<br>(from 0% on a static model)</div>
       </div>
       <div class="stat">
@@ -275,12 +275,12 @@
         <div class="lbl">On-manifold rate on attacker-controlled features — attacks stay executable after evasion</div>
       </div>
       <div class="stat">
-        <div class="num" data-to="11.9" data-suffix="%" data-dec="1">0%</div>
+        <div class="num" data-to="12.2" data-suffix="%" data-dec="1">0%</div>
         <div class="lbl">Guardrail binding rate — perturbations pulled back to plausibility</div>
       </div>
       <div class="stat">
-        <div class="num" data-to="1.5" data-suffix="%" data-dec="1">0%</div>
-        <div class="lbl">Alert rate — share of all traffic flagged at the 0.1% operating point</div>
+        <div class="num" data-to="0.66" data-suffix="%" data-dec="2">0%</div>
+        <div class="lbl">Alert rate on real traffic at the 0.1% operating point — what an ops queue actually sees</div>
       </div>
     </div>
     <p class="loop-note" style="margin-top:22px">
@@ -356,7 +356,7 @@
     </div>
     <div class="steps">
       <div class="step reveal"><div class="idx">01 — IDENTIFY</div>
-        <h3>Invent</h3><p>A taxonomy of where GenAI actually changes payment fraud. Four vectors are built as live code; the rest catalogued for breadth.</p></div>
+        <h3>Invent</h3><p>A taxonomy of where GenAI actually changes payment fraud. Five vectors are built as live code; the rest catalogued for breadth.</p></div>
       <div class="step reveal"><div class="idx">02 — GENERATE</div>
         <h3>Render</h3><p>Attacks are emitted as transactions in the frozen feature space, mounted on real never-fraudulent accounts whose issuer-side context they inherit — so they are plausible by construction, not by assertion.</p></div>
       <div class="step reveal"><div class="idx">03 — EVADE</div>
@@ -389,7 +389,7 @@
       <div class="col good reveal">
         <h4>Chhal, closed loop</h4>
         <ul>
-          <li><span class="mk">✓</span> Benchmark recall climbs from 0% to 83.4% on attacks the model never trained on, at a 0.1% false-positive budget.</li>
+          <li><span class="mk">✓</span> Benchmark recall climbs from 0% to 83.6% on attacks the model never trained on, at a 0.1% false-positive budget — a budget the run verifies it honoured (0.0996% realised).</li>
           <li><span class="mk">✓</span> Each gap the red team finds becomes the next training signal — the target moves.</li>
           <li><span class="mk">✓</span> Fidelity is a number: on-manifold rate and per-vector KS versus real traffic.</li>
           <li><span class="mk">✓</span> A frozen held-out split proves generalisation, not memorisation. No leakage.</li>
@@ -417,31 +417,31 @@
           <tr class="hero-row">
             <td class="vname">threshold_hugging</td>
             <td>Sequences tuned just under every velocity/amount rule, mimicking the victim</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:31%"></span></span>31.4%</div></td>
-            <td>0.15</td><td><span class="tag stealth">stealthiest</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:35%"></span></span>35.4%</div></td>
+            <td>0.16</td><td><span class="tag stealth">stealthiest</span></td>
           </tr>
           <tr>
             <td class="vname">upi_collect</td>
             <td>🇮🇳 Fraudulent UPI collect-request, then rapid drain through fresh VPAs</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:97%"></span></span>97.2%</div></td>
-            <td>0.20</td><td><span class="tag">social-eng</span></td>
-          </tr>
-          <tr>
-            <td class="vname">mule_fanout</td>
-            <td>One operator, many mule accounts, every one moving inside the same six hours</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:94%"></span></span>93.8%</div></td>
-            <td>0.22</td><td><span class="tag">coordinated</span></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:95%"></span></span>94.8%</div></td>
+            <td>0.19</td><td><span class="tag">social-eng</span></td>
           </tr>
           <tr>
             <td class="vname">bustout</td>
             <td>Synthetic identity ages a clean account, then maxes it in a burst</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:96%"></span></span>96.2%</div></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:95%"></span></span>94.6%</div></td>
             <td>0.23</td><td><span class="tag">overt</span></td>
+          </tr>
+          <tr>
+            <td class="vname">mule_fanout</td>
+            <td>One operator, many mule accounts, every one moving inside the same six hours</td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:94%"></span></span>94.2%</div></td>
+            <td>0.24</td><td><span class="tag">coordinated</span></td>
           </tr>
           <tr>
             <td class="vname">card_testing</td>
             <td>Agentic BIN probing, sized to stay under velocity limits</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:98%"></span></span>98.2%</div></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar"><span style="width:99%"></span></span>99.2%</div></td>
             <td>0.31</td><td><span class="tag">overt</span></td>
           </tr>
         </tbody>
@@ -449,7 +449,7 @@
     </div>
     <p class="loop-note" style="margin-top:20px">
       The ends of the KS ranking hold: the stealthiest vector is caught a third as often as the
-      most overt one. The middle three sit within five points of each other and KS does not
+      most overt one. The middle three sit within half a point of each other and KS does not
       separate them. Fidelity predicts the extremes, not the ordering — and we say that rather
       than the tidier version, because the tidier version stopped being true at five vectors.
     </p>
