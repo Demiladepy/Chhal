@@ -68,6 +68,19 @@ def main() -> None:
         "baseline_pr_auc": round(float(bench["pr_auc"].iloc[0]), 4),
         "final_pr_auc": round(float(bench["pr_auc"].iloc[-1]), 4),
         "final_alert_rate": round(float(bench["alert_rate"].iloc[-1]), 5),
+        # The rate above is over the scored mixture (real legit + however many attacks
+        # this run generated), so it moves with a config knob. This one is measured on
+        # the real test set alone and is the number an ops team would staff against.
+        "final_alert_rate_on_real_traffic": round(
+            float(bench["alert_rate_on_real_traffic"].iloc[-1]), 5),
+        # Each threshold's REALISED false-positive rate. Must be at or under the budget
+        # it is named for; printed so the budget can be checked rather than trusted.
+        "realised_fpr": {
+            c.replace("realised_fpr_", "budget="): round(float(bench[c].iloc[-1]), 6)
+            for c in bench.columns if c.startswith("realised_fpr_")
+        },
+        # Every count here must be zero. See chhal/loop.py:_leakage_audit.
+        "leakage_audit": result.leakage_audit,
         # --- the naive 0.5 cutoff, retained for comparison only, never as the headline ---
         "naive_threshold_0.5": {
             "baseline_f1": round(float(bench["f1"].iloc[0]), 4),

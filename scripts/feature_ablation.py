@@ -26,6 +26,7 @@ Real data only, no red team, no attacks. Temporal split, same cut as prepare_iee
 from __future__ import annotations
 
 import json
+import gc
 import os
 import sys
 from pathlib import Path
@@ -39,17 +40,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from chhal.behaviour import HOUR_OFFSET, derive, hour_of   # noqa: E402
+from chhal.evaluation import threshold_for_fpr             # noqa: E402
 from prepare_ieee import CHANNEL_MAP, DOMESTIC_ADDR2, _download  # noqa: E402
 
+# HEAVY: ~13 GB peak RSS and ~45s, because the last tier fits a model on all 339
+# V-columns at once. That is inherent to the question this script asks, not an
+# oversight — but it means a 16 GB machine will be tight and an 8 GB one will not
+# finish. Nothing else in the project needs anything like this.
+PEAK_RSS_GB = 13
 RAW = os.path.expanduser("~/chhal-data/raw/train_transaction.csv")
 FPRS = (0.001, 0.005, 0.01)
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 
 
 def main() -> None:
+    print(f"[note ] this script peaks around {PEAK_RSS_GB} GB of memory and reads the "
+          f"full {os.path.basename(RAW)} (683 MB).")
     if not os.path.exists(RAW):
         _download(RAW)
-    df = pd.read_csv(RAW, low_memory=False)
+    # float32 for the 370-odd numeric columns. The default float64 read peaked at
+    # 12.7 GB resident, which OOMs a 16 GB machine before the first model is fit —
+    # and this file has 394 columns of which 339 are the V block. No result here is
+    # sensitive to the seventh decimal place.
+    head = pd.read_csv(RAW, nrows=200, low_memory=False)
+    dtypes = {c: np.float32 for c in head.columns
+              if pd.api.types.is_float_dtype(head[c]) and c != "isFraud"}
+    df = pd.read_csv(RAW, dtype=dtypes, low_memory=False)
+    del head
     if len(df) != 590_540 or df.isFraud.sum() != 20_663:
         raise SystemExit("not the genuine IEEE-CIS train_transaction.csv")
     df = df.sort_values("TransactionDT", kind="mergesort").reset_index(drop=True)
@@ -63,8 +80,10 @@ def main() -> None:
     is_tr = (df.TransactionDT <= df.TransactionDT.quantile(0.75)).to_numpy()
     print(f"[split] train={is_tr.sum():,}  test={(~is_tr).sum():,}")
 
+    n = len(df)
+
     def target_encode(key, k=50.0, folds=5, seed=7):
-        prior = y[is_tr].mean(); out = np.full(len(df), prior)
+        prior = y[is_tr].mean(); out = np.full(n, prior)
         def enc(fit, app):
             a = pd.DataFrame({"k": key[fit], "y": y[fit]}).groupby("k").y.agg(["sum", "count"])
             sm = (a["sum"] + prior * k) / (a["count"] + k)
@@ -72,8 +91,8 @@ def main() -> None:
         rng = np.random.default_rng(seed); ti = np.flatnonzero(is_tr)
         f = rng.integers(0, folds, len(ti))
         for i in range(folds):
-            fit = np.zeros(len(df), bool); fit[ti[f != i]] = True
-            app = np.zeros(len(df), bool); app[ti[f == i]] = True
+            fit = np.zeros(n, bool); fit[ti[f != i]] = True
+            app = np.zeros(n, bool); app[ti[f == i]] = True
             enc(fit, app)
         enc(is_tr, ~is_tr)
         return out
@@ -105,12 +124,15 @@ def main() -> None:
             out[s:e] = np.arange(e - s) - np.searchsorted(seg, seg - w, "left")
         inv = np.empty_like(order); inv[order] = np.arange(len(order)); return out[inv]
 
+    addr1 = df.addr1.fillna(-1).to_numpy()
+    emaildom = df.P_emaildomain.fillna("NA").to_numpy()
+    card2 = df.card2.fillna(-1).to_numpy()
     gs, amt = pd.Series(uid), df.TransactionAmt
     OURS = pd.DataFrame({
         "n_distinct_counterparties": expanding_nunique(uid, counterparty),
-        "n_distinct_addr": expanding_nunique(uid, df.addr1.fillna(-1).to_numpy()),
-        "n_distinct_email": expanding_nunique(uid, df.P_emaildomain.fillna("NA").to_numpy()),
-        "n_distinct_card_attr": expanding_nunique(uid, df.card2.fillna(-1).to_numpy()),
+        "n_distinct_addr": expanding_nunique(uid, addr1),
+        "n_distinct_email": expanding_nunique(uid, emaildom),
+        "n_distinct_card_attr": expanding_nunique(uid, card2),
         "txns_so_far": gs.groupby(gs).cumcount().to_numpy(),
         "velocity_7d": window_count(uid, ts, 604_800),
         "velocity_30d": window_count(uid, ts, 2_592_000),
@@ -119,26 +141,39 @@ def main() -> None:
     C = df[[f"C{i}" for i in range(1, 15)]].fillna(-1)
     D = df[[f"D{i}" for i in range(1, 16)]].fillna(-1)
     V = df[[c for c in df.columns if c.startswith("V")]].fillna(-1).astype(np.float32)
+    df = None                    # 394 columns we are done with; free them before fitting
+    gc.collect()
 
+    # Built one at a time, on demand. Materialising all six at once held roughly five
+    # copies of the V block in memory simultaneously and took peak RSS past 12 GB,
+    # which OOMs a 16 GB machine partway through.
     TIERS = {
-        "the 12 we hand-derived": BASE,
-        "+ linkage counts we built ourselves": pd.concat([BASE, OURS], axis=1),
-        "+ the dataset's C1-C14": pd.concat([BASE, C], axis=1),
-        "+ both": pd.concat([BASE, OURS, C], axis=1),
-        "+ C1-C14 and D1-D15": pd.concat([BASE, C, D], axis=1),
-        "+ everything incl. 339 V (ceiling)": pd.concat([BASE, OURS, C, D, V], axis=1),
+        "the 12 we hand-derived": lambda: BASE,
+        "+ linkage counts we built ourselves": lambda: pd.concat([BASE, OURS], axis=1),
+        "+ the dataset's C1-C14": lambda: pd.concat([BASE, C], axis=1),
+        "+ both": lambda: pd.concat([BASE, OURS, C], axis=1),
+        "+ C1-C14 and D1-D15": lambda: pd.concat([BASE, C, D], axis=1),
+        "+ everything incl. 339 V (ceiling)": lambda: pd.concat([BASE, OURS, C, D, V], axis=1),
     }
 
     rows = []
-    for name, X in TIERS.items():
+    for name, build in TIERS.items():
+        X = build()
         m = LGBMClassifier(n_estimators=300, learning_rate=0.05, num_leaves=48,
-                           subsample=0.8, colsample_bytree=0.8, random_state=7,
+                           subsample=0.8, subsample_freq=1, colsample_bytree=0.8, random_state=7,
                            n_jobs=-1, verbose=-1)
         m.fit(X[is_tr].to_numpy(np.float32), y[is_tr])
         p = m.predict_proba(X[~is_tr].to_numpy(np.float32))[:, 1]
         yt = y[~is_tr]; legit = p[yt == 0]
-        rows.append({"features": name, "n": X.shape[1],
-                     **{f"recall@{f}": round(float((p[yt == 1] >= np.quantile(legit, 1 - f)).mean()), 4)
+        n_cols = X.shape[1]
+        del X
+        gc.collect()
+        # threshold_for_fpr, not np.quantile: a quantile can land inside a block of tied
+        # scores and the `>=` rule then flags the whole block, quietly overshooting the
+        # budget this table is named after.
+        rows.append({"features": name, "n": n_cols,
+                     **{f"recall@{f}": round(float(
+                         (p[yt == 1] >= threshold_for_fpr(legit, f)).mean()), 4)
                         for f in FPRS},
                      "pr_auc": round(float(average_precision_score(yt, p)), 4)})
         print("  ", rows[-1])

@@ -119,11 +119,18 @@ def main() -> None:
           f"ECE raw={ece_raw:.4f} -> calibrated={ece_cal:.4f} "
           f"(in-sample {ece_insample:.4f}, which is why we do not quote it)")
 
-    # the comparator, tuned on the held-back half and never on what it is priced against
+    # The comparator, tuned on the held-back half and never on what it is priced against
+    # — and held to the SAME friction budget our own policy has to live inside. Without
+    # that second constraint the comparison was rigged in our favour in one direction
+    # and against us in the other: an unconstrained ladder buys its low cost by
+    # challenging 64% of traffic, which no issuer would ship, while our policy was
+    # capped at 5%.
+    POLICY_CFG = PolicyConfig(max_review_rate=0.005, max_stepup_rate=0.05)
     t_stepup, t_block = tune_two_thresholds(
-        CostModel(), p_hold, y_hold,
-        hold_pool["amount"].to_numpy())
-    print(f"[tuned] amount-blind ladder: step_up >= {t_stepup:.4f}, block >= {t_block:.4f}")
+        CostModel(), p_hold, y_hold, hold_pool["amount"].to_numpy(),
+        max_stepup_frac=POLICY_CFG.max_stepup_rate)
+    print(f"[tuned] amount-blind ladder: step_up >= {t_stepup:.4f}, block >= {t_block:.4f} "
+          f"(step-up capped at {POLICY_CFG.max_stepup_rate:.1%}, same as the policy)")
 
     # 5. the frozen future: real legit + real fraud + unseen adaptive attacks
     ev = pd.concat([base.test, atk["eval"].drop(columns=["vector"])], ignore_index=True)
@@ -166,8 +173,14 @@ def main() -> None:
 
     # 6. price the policies
     costs = CostModel()
-    policy = ActionPolicy(costs, PolicyConfig(max_review_rate=0.005))
+    policy = ActionPolicy(costs, POLICY_CFG)
     actions = policy.decide(p, amt)
+    # The policy with its analyst queue closed. Same action set and same friction budget
+    # as the ladder, so the gap between the two is amount-awareness and nothing else —
+    # which is what lets the saving be attributed instead of just claimed.
+    no_queue = ActionPolicy(costs, PolicyConfig(max_review_rate=0.0,
+                                                max_stepup_rate=POLICY_CFG.max_stepup_rate))
+    nq_actions = no_queue.decide(p, amt)
 
     naive_actions = np.where(p >= 0.5, int(Action.BLOCK), int(Action.ALLOW))
     tuned_actions = np.where(p >= t_block, int(Action.BLOCK),
@@ -176,6 +189,7 @@ def main() -> None:
     do_nothing = allow_all_baseline(costs, y, amt)
     naive = threshold_baseline(costs, p, y, amt, threshold=0.5)
     tuned = two_threshold_baseline(costs, p, y, amt, t_stepup, t_block)
+    nq = no_queue.report(nq_actions, y, amt)
     smart = policy.report(actions, y, amt)
 
     def line(name, rep, acts=None):
@@ -196,14 +210,30 @@ def main() -> None:
         line("do nothing (allow all)", do_nothing),
         line("block at score >= 0.5 (untuned)", naive, naive_actions),
         line("tuned allow/step-up/block (amount-blind)", tuned, tuned_actions),
+        line("expected-cost policy, no analyst queue", nq, nq_actions),
         line("expected-cost policy", smart, actions)])
     print("\n=== mitigation: cost of each policy on the same population ===")
     print(comparison.to_string(index=False))
     edge = (tuned["cost_per_1k_txns"] - smart["cost_per_1k_txns"]) / tuned["cost_per_1k_txns"]
     print("\nThe defensible claim is the LAST row against the THIRD, not against the second:")
-    print(f"  amount-awareness + the capacity cap are worth {edge*100:.2f}% over the best "
-          f"amount-blind ladder\n  ({comparison.iloc[3]['net_cost_reduction_pct']:.2f}% vs "
+    print(f"  amount-awareness + the analyst queue are worth {edge*100:.2f}% over the best "
+          f"amount-blind ladder at the same friction budget\n  "
+          f"({comparison.iloc[4]['net_cost_reduction_pct']:.2f}% vs "
           f"{comparison.iloc[2]['net_cost_reduction_pct']:.2f}% net cost reduction).")
+    # attribute it, so nobody has to take the split on trust
+    d_tune = naive["total_cost"] - tuned["total_cost"]
+    d_amount = tuned["total_cost"] - nq["total_cost"]
+    d_queue = nq["total_cost"] - smart["total_cost"]
+    print(f"\nThe ladder's thresholds were tuned to spend at most "
+          f"{POLICY_CFG.max_stepup_rate:.1%} friction on the calibration half; applied to "
+          f"this population they\nrealise {tuned['stepup_rate']:.2%}, because a fixed "
+          f"threshold does not carry a fixed rate across populations. The comparator is "
+          f"therefore\nspending MORE friction than our policy is allowed to "
+          f"({smart['stepup_rate']:.2%}), so the edge below is a conservative one.")
+    print("\nWhere the saving comes from, against the untuned 0.5 cutoff:")
+    print(f"  tuning the thresholds      {d_tune:>12,.0f}")
+    print(f"  pricing against the amount {d_amount:>12,.0f}")
+    print(f"  the analyst queue (0.5%)   {d_queue:>12,.0f}")
 
     # 7. the same economics, split by segment
     segs = segment_costs(costs, actions, y, amt, is_adaptive)
@@ -223,6 +253,9 @@ def main() -> None:
     print(mix.to_string())
     print(f"\nreview queue          : {smart['review_rate']*100:.3f}% of traffic "
           f"(cap {policy.cfg.max_review_rate*100:.1f}%)")
+    print(f"step-up challenges    : {smart['stepup_rate']*100:.3f}% of traffic "
+          f"(cap {policy.cfg.max_stepup_rate*100:.1f}%)")
+    print(f"legit customers challenged: {smart['stepup_rate_on_legit']*100:.3f}%")
     print(f"outright declines on legit: {smart['block_rate_on_legit']*100:.3f}%")
     print(f"fraud stopped or challenged: {smart['fraud_touched_rate']*100:.2f}% "
           f"(real {(np.isin(actions[seg['real_fraud']], [Action.BLOCK, Action.REVIEW, Action.STEP_UP]).mean())*100:.2f}%, "

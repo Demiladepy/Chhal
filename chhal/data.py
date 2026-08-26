@@ -27,7 +27,7 @@ Two things are computed here that the rest of the loop depends on:
                     rather than from hand-picked constants, and the vectors port to any
                     dataset without rescaling.
 
-The split is TEMPORAL for real data (train on the past, test on the future). A random
+The split is TEMPORAL on both sources (train on the past, test on the future). A random
 split leaks future fraud patterns backwards and inflates every metric.
 """
 from __future__ import annotations
@@ -89,6 +89,12 @@ def _profile_from_train(train: pd.DataFrame) -> tuple:
 # ---------------------------------------------------------------------------
 # source: real IEEE-CIS
 # ---------------------------------------------------------------------------
+# What the prepared parquet has to look like before we are willing to label results
+# `source=ieee`. The floor is deliberately loose — it is there to catch a truncated or
+# fabricated file, not to pin an exact row count that a future prep change may move.
+IEEE_TOTAL_ROWS = 590_540
+MIN_IEEE_ROWS = 500_000
+
 def _load_ieee(path: str, seed: int, max_rows: int | None) -> BaseData:
     if not os.path.exists(path):
         raise FileNotFoundError(
@@ -102,6 +108,18 @@ def _load_ieee(path: str, seed: int, max_rows: int | None) -> BaseData:
     test = df[df["split"] == "test"].drop(columns=["split"]).reset_index(drop=True)
     if not set(HOST_COLUMNS) <= set(train.columns):
         raise SystemExit(f"{path} predates the host pool; rerun scripts/prepare_ieee.py")
+    # The file's NAME is the only thing asserting it holds real IEEE-CIS, and a name is
+    # not evidence. A truncated or hand-made parquet used to load silently and every
+    # result downstream would then be reported as `source=ieee`. Check the shape the
+    # real thing actually has before agreeing to call it that.
+    n = len(train) + len(test)
+    if n < MIN_IEEE_ROWS:
+        raise SystemExit(
+            f"{path} holds {n:,} rows; real IEEE-CIS has {IEEE_TOTAL_ROWS:,}. "
+            f"This is a truncated or hand-made file and must not be reported as "
+            f"source=ieee. Rerun scripts/prepare_ieee.py.")
+    if not len(train) or not len(test):
+        raise SystemExit(f"{path} has an empty split (train={len(train)}, test={len(test)})")
     if max_rows:   # stratified subsample for fast iteration; never for headline numbers
         rng = np.random.default_rng(seed)
         def sub(d, n):
@@ -174,7 +192,13 @@ def _load_synthetic(n_legit: int, n_baseline_fraud: int, test_frac: float,
     rng = np.random.default_rng(seed)
     full = pd.concat([_sample_legit(n_legit, rng),
                       _sample_baseline_fraud(n_baseline_fraud, rng)], ignore_index=True)
-    full = full.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    # Temporal here too, for the same reason it is temporal on the real source: train on
+    # the past, test on the future. This used to shuffle and cut, which is a random
+    # split — and since the whole test suite runs on this source, the one place the
+    # no-leakage discipline gets exercised was the one place it did not hold. It also
+    # made an account appear on both sides only by chance, so the train/test account
+    # exclusion looked unnecessary. Sorting by time makes both real.
+    full = full.sort_values("_ts", kind="mergesort").reset_index(drop=True)
     cut = int(len(full) * (1 - test_frac))
     train, test = full.iloc[:cut].copy(), full.iloc[cut:].copy()
     fs, lq, cats = _profile_from_train(train)

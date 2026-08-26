@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN          # noqa: E402
+from chhal.contract import FEATURE_COLUMNS, OPERATING_POINTS, LABEL_COLUMN          # noqa: E402
 from chhal.data import load_base_data                             # noqa: E402
 from chhal.detector import Detector                               # noqa: E402
 from chhal.ensemble import AnomalyArm, Ensemble, StackedDetector  # noqa: E402
@@ -61,6 +61,10 @@ def test_ensemble_percentiles_are_calibrated_on_legit(base):
     for p in (sup, anom):
         assert ((p >= 0) & (p <= 1)).all()
         assert 0.4 < p.mean() < 0.6, "legit traffic should sit mid-distribution by construction"
+        # a percentile transform is a rank map, so the reference population has to come
+        # out roughly uniform — a constant 0.5 would satisfy the mean check above
+        assert 0.2 < np.median(p) < 0.8
+        assert p.std() > 0.2, "percentiles are collapsed, not spread over the reference"
     assert (ens.score(legit) >= np.maximum(sup, anom) - 1e-9).all()
 
 
@@ -81,8 +85,17 @@ def test_stacked_detector_drops_into_evaluate_unchanged(base):
     legit = base.test[base.test[LABEL_COLUMN] == 0]
     fraud = base.test[base.test[LABEL_COLUMN] == 1]
     rep = evaluate(st, legit, fraud, np.array(["real"] * len(fraud)), 1, "heldout_novel")
-    assert 0.0 <= rep.pr_auc <= 1.0
-    assert set(rep.recall_at_fpr) and all(0 <= v <= 1 for v in rep.recall_at_fpr.values())
+    # `0 <= pr_auc <= 1` and `0 <= recall <= 1` are true of any probability, so they
+    # passed with an inverted detector. Assert the report is INTERNALLY CONSISTENT
+    # instead, which is what a drop-in replacement actually has to be.
+    assert rep.pr_auc > len(fraud) / (len(fraud) + len(legit)), (
+        "PR AUC is at or below the prevalence floor — this is not a working detector")
+    assert set(rep.recall_at_fpr) == set(OPERATING_POINTS)
+    for fpr, realised in rep.realised_fpr_at_fpr.items():
+        assert realised <= fpr + 1e-12
+    # relaxing the budget can never catch less
+    ordered = [rep.recall_at_fpr[f] for f in sorted(OPERATING_POINTS)]
+    assert ordered == sorted(ordered)
 
 
 def test_anomaly_arm_is_blind_to_on_manifold_attacks(base):

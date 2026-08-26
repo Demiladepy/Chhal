@@ -15,11 +15,41 @@ from chhal.evaluation import recall_at_fpr, threshold_for_fpr          # noqa: E
 
 
 def test_threshold_for_fpr_flags_the_requested_share_of_legit():
+    """On continuous scores the threshold lands within a hair of the budget.
+
+    The tolerance is one part in ten thousand of the budget itself, not the flat
+    +/-5e-4 this used to allow — that was a +/-50% band around a 0.1% budget and would
+    have passed a threshold flagging 0.0006 or 0.0015 without complaint.
+    """
     rng = np.random.default_rng(0)
     legit = rng.random(100_000)
     for fpr in OPERATING_POINTS:
         thr = threshold_for_fpr(legit, fpr)
-        assert (legit >= thr).mean() == pytest.approx(fpr, abs=5e-4)
+        assert (legit >= thr).mean() == pytest.approx(fpr, rel=0.02)
+
+
+def test_the_budget_is_never_exceeded_even_when_scores_are_one_big_tie():
+    """The bug this guards: a quantile can land inside a block of identical scores, and
+    `>=` then sweeps the entire block in. Measured on the real detector, that reported
+    recall "at a 0.1% budget" while flagging 43.9% of legitimate traffic. A tree
+    ensemble produces exactly this shape, so the test uses it: 40% of legit sitting on
+    one value, right where a 0.1% quantile would like to sit."""
+    legit = np.concatenate([np.full(40_000, 0.5), np.linspace(0.0, 0.49, 59_000),
+                            np.linspace(0.51, 1.0, 1_000)])
+    for fpr in OPERATING_POINTS:
+        thr = threshold_for_fpr(legit, fpr)
+        realised = (legit >= thr).mean()
+        assert realised <= fpr + 1e-12, (
+            f"budget {fpr} quoted, {realised:.4f} realised")
+
+
+def test_a_budget_too_tight_for_any_threshold_returns_no_recall_not_a_bargain():
+    """If even the single highest block of scores busts the budget, the honest answer
+    is that nothing can be flagged — not a threshold that flags the block anyway."""
+    legit = np.full(1_000, 0.7)
+    attacks = np.full(100, 0.7)
+    rec, thr, realised = recall_at_fpr(legit, attacks, 0.001)
+    assert rec == 0.0 and realised == 0.0 and thr > 0.7
 
 
 def test_recall_is_monotone_in_the_false_positive_budget():
@@ -36,7 +66,8 @@ def test_a_useless_detector_scores_near_the_budget_it_is_given():
     """Random scores catch fraud at exactly the rate they flag legit traffic."""
     rng = np.random.default_rng(2)
     legit, attacks = rng.random(200_000), rng.random(20_000)
-    got, _ = recall_at_fpr(legit, attacks, 0.01)
+    got, _, realised = recall_at_fpr(legit, attacks, 0.01)
+    assert realised <= 0.01 + 1e-12
     assert got == pytest.approx(0.01, abs=0.004)
 
 
@@ -56,15 +87,18 @@ def test_pr_auc_is_the_honest_summary_under_imbalance():
 def test_score_report_row_leads_with_operating_points():
     rep = ScoreReport(iteration=1, split="heldout_novel", precision=0.5, recall=0.5,
                       f1=0.5, auc=0.99, fp_rate_on_legit=0.02, pr_auc=0.61,
-                      recall_at_fpr={f: 0.5 for f in OPERATING_POINTS}, alert_rate=0.013)
+                      recall_at_fpr={f: 0.5 for f in OPERATING_POINTS},
+                      realised_fpr_at_fpr={f: f for f in OPERATING_POINTS},
+                      alert_rate=0.013)
     row = rep.as_row()
     for fpr in OPERATING_POINTS:
         assert f"recall_at_fpr_{fpr}" in row
+        assert row[f"realised_fpr_{fpr}"] <= fpr + 1e-12
     assert row["pr_auc"] == 0.61 and row["alert_rate"] == 0.013
     assert PRIMARY_FPR in OPERATING_POINTS
 
 
 def test_empty_attack_set_does_not_crash():
     legit = np.random.default_rng(4).random(1000)
-    rec, thr = recall_at_fpr(legit, np.array([]), 0.001)
-    assert rec == 0.0 and np.isfinite(thr)
+    rec, thr, realised = recall_at_fpr(legit, np.array([]), 0.001)
+    assert rec == 0.0 and np.isfinite(thr) and realised <= 0.001 + 1e-12

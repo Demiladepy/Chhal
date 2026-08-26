@@ -75,7 +75,10 @@ def derive(uid: np.ndarray, timestamp_s: np.ndarray, amount: np.ndarray) -> pd.D
     with np.errstate(divide="ignore", invalid="ignore"):
         prior_mean = np.where(pos > 0, prior_sum / np.maximum(pos, 1), np.nan)
         ratio = np.where(pos > 0, amt_s / prior_mean, 1.0)
-    ratio = np.nan_to_num(ratio, nan=1.0, posinf=1.0)
+    # neginf matters as much as posinf: a negative prior mean (impossible on IEEE,
+    # possible on a dataset with refunds) would otherwise leave -inf in a feature
+    # column and LightGBM would happily split on it.
+    ratio = np.nan_to_num(ratio, nan=1.0, posinf=1.0, neginf=1.0)
 
     inv = np.empty_like(order)
     inv[order] = np.arange(len(order))

@@ -8,7 +8,7 @@ come back negative.
 Two questions, both at a FIXED 0.1% false-positive budget on real legitimate traffic so
 the comparison is like for like:
 
-  1. UNSEEN FAMILY — train on three attack vectors, score the fourth, which neither arm
+  1. UNSEEN FAMILY — train on every vector but one, score the one held out, which neither arm
      has seen in any form. Does supervised + anomaly beat supervised alone?
   2. REAL FRAUD — IEEE-CIS's own labelled fraud, where the supervised arm scores only
      ~3% at this budget through twelve derived features. Does the anomaly arm help there?
@@ -110,7 +110,7 @@ def main() -> None:
         {"unseen attack family": [df[f"unseen_{k}"].mean() for k in VARIANTS],
          "real IEEE-CIS fraud": [df[f"real_{k}"].mean() for k in VARIANTS]},
         index=list(VARIANTS)).round(4)
-    print("\n=== mean over the four held-out families ===")
+    print(f"\n=== mean over the {len(rows)} held-out families ===")
     print(summary.to_string())
 
     # diagnostic: the arm on its own, which is the number that explains the rest

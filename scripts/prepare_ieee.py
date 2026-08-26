@@ -57,9 +57,12 @@ Usage
     python scripts/prepare_ieee.py
 
 Downloads the raw transactions (~683MB) on first run if they are not already present,
-derives the features in a few seconds, and writes an 8MB parquet. The raw CSV is only
-needed to rebuild that parquet, so it is safe to delete afterwards — this script will
-fetch it again if it is ever needed.
+derives the features in a few seconds, and writes an 18.6MB parquet. Re-running is a
+no-op once that parquet exists; pass --force to rebuild.
+
+Keep the raw CSV if you intend to run `scripts/feature_ablation.py`, which reads the
+339 V-columns the parquet does not carry and will otherwise re-download the whole file.
+Everything else in the project needs only the parquet.
 """
 from __future__ import annotations
 
@@ -109,7 +112,14 @@ def _download(path: str) -> None:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     tmp = path + ".part"
     print(f"[fetch ] {SOURCE_URL}\n         -> {path} (~683MB, one time)")
-    with urllib.request.urlopen(SOURCE_URL) as r, open(tmp, "wb") as f:
+    try:
+        r = urllib.request.urlopen(SOURCE_URL)
+    except Exception as e:
+        raise SystemExit(
+            f"Could not download the raw IEEE-CIS transactions ({e}).\n"
+            f"This step needs network access once. If you already have "
+            f"train_transaction.csv, put it at {path} and rerun.") from None
+    with r, open(tmp, "wb") as f:
         total = int(r.headers.get("content-length", 0))
         done = 0
         while chunk := r.read(1 << 20):
@@ -186,7 +196,29 @@ def _merchant_risk(df: pd.DataFrame, is_train: np.ndarray, seed: int) -> np.ndar
     return out
 
 
-def build(raw_dir: str, out_path: str, seed: int = 7) -> pd.DataFrame:
+def build(raw_dir: str, out_path: str, seed: int = 7, force: bool = False) -> pd.DataFrame:
+    """Derive the prepared parquet from the raw IEEE-CIS transactions.
+
+    Idempotent: a usable parquet already at `out_path` is left alone. Re-running this
+    used to re-download 683MB and redo the whole derivation even when nothing had
+    changed, which is a slow way to find out you already had the file. `--force`
+    rebuilds anyway.
+    """
+    if not force and os.path.exists(out_path):
+        try:
+            existing = pd.read_parquet(out_path)
+        except Exception as e:                        # corrupt/partial file -> rebuild
+            print(f"[reuse ] {out_path} unreadable ({e}); rebuilding")
+        else:
+            ok = (len(existing) == EXPECTED_ROWS
+                  and set(FEATURE_COLUMNS) <= set(existing.columns)
+                  and "split" in existing.columns)
+            if ok:
+                print(f"[reuse ] {out_path} already holds {len(existing):,} prepared rows. "
+                      f"Nothing to do (pass --force to rebuild).")
+                return existing
+            print(f"[reuse ] {out_path} exists but does not match the expected shape; "
+                  f"rebuilding")
     raw = _load_raw(raw_dir)
     beh = _behavioural_features(raw)
 
@@ -257,5 +289,7 @@ if __name__ == "__main__":
     ap.add_argument("--raw", default=os.path.expanduser("~/chhal-data/raw"))
     ap.add_argument("--out", default=os.path.expanduser("~/chhal-data/ieee_base.parquet"))
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--force", action="store_true",
+                    help="rebuild even if the prepared parquet already exists")
     a = ap.parse_args()
-    build(a.raw, a.out, a.seed)
+    build(a.raw, a.out, a.seed, a.force)

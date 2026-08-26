@@ -42,6 +42,14 @@ from .contract import ATTACKER_DIRECT, DERIVED_FEATURES, FEATURE_COLUMNS
 
 MIMICRY_VECTOR = "threshold_hugging"
 
+# The columns the red team actually sets or produces. The mean KS over all 26 features
+# is a flattering number and it is worth being explicit about why: 16 of the 26 are
+# inherited whole from a real host account, so they match legitimate traffic by
+# construction and contribute a KS of roughly zero each. Averaging them in is 62% free
+# passes. Every mimicry claim is therefore reported twice — over all features, and over
+# these, which is where mimicry either happened or did not.
+CONTROLLED_FEATURES: List[str] = list(dict.fromkeys(ATTACKER_DIRECT + DERIVED_FEATURES))
+
 
 def ks_table(reference: pd.DataFrame, sample: pd.DataFrame,
              features: List[str] | None = None) -> pd.DataFrame:
@@ -67,6 +75,23 @@ def _cell_rate(sample: pd.DataFrame, feature_stats: pd.DataFrame, columns) -> fl
     inside = np.ones((len(sample), len(cols)), dtype=bool)
     for j, col in enumerate(cols):
         inside[:, j] = (sample[col] >= lo[col] - 1e-9) & (sample[col] <= hi[col] + 1e-9)
+    return float(inside.mean())
+
+
+def _rows_fully_inside(sample: pd.DataFrame, feature_stats: pd.DataFrame, columns) -> float:
+    """Fraction of ROWS with every one of `columns` inside the manifold.
+
+    A cell rate of 0.9964 sounds like nothing escapes; measured per row it means 6.1% of
+    rows carry an off-manifold value somewhere. Both are true and only one of them is
+    the question a reader is asking.
+    """
+    lo, hi = feature_stats.loc[0.005], feature_stats.loc[0.995]
+    cols = [c for c in columns if c in sample.columns and c in lo.index]
+    if not cols or len(sample) == 0:
+        return 1.0
+    inside = np.ones(len(sample), dtype=bool)
+    for col in cols:
+        inside &= ((sample[col] >= lo[col] - 1e-9) & (sample[col] <= hi[col] + 1e-9)).to_numpy()
     return float(inside.mean())
 
 
@@ -109,10 +134,16 @@ def ks_by_vector(legit: pd.DataFrame, attacks: pd.DataFrame,
     for v in sorted(np.unique(attack_vectors)):
         sub = attacks[attack_vectors == v]
         ks = ks_table(legit, sub)
+        controlled = ks[ks["feature"].isin(CONTROLLED_FEATURES)]
         rows.append({
             "vector": v,
             "mean_ks_vs_legit": round(float(ks["ks_stat"].mean()), 4),
+            # the same distance restricted to what the red team controls — see
+            # CONTROLLED_FEATURES for why the two differ by so much
+            "mean_ks_controlled": round(float(controlled["ks_stat"].mean()), 4),
             "features_like_legit": int(ks["matches_legit"].sum()),
+            "controlled_like_legit": int(controlled["matches_legit"].sum()),
+            "n_controlled": int(len(controlled)),
         })
     return pd.DataFrame(rows).sort_values("mean_ks_vs_legit").reset_index(drop=True)
 
@@ -130,8 +161,22 @@ def fidelity_report(legit: pd.DataFrame, attacks: pd.DataFrame,
         "derived_on_manifold_rate": round(
             derived_on_manifold_rate(attacks, feature_stats), 4),
         "mimicry_vector": MIMICRY_VECTOR,
+        # on-manifold over EVERY feature, not just the four the guardrail governs: the
+        # headline 1.0000 is scoped to those four, and a reader is entitled to the
+        # number that includes the columns it does not touch.
+        "on_manifold_rate_all_features": round(
+            _cell_rate(attacks, feature_stats, FEATURE_COLUMNS), 4),
+        "rows_fully_on_manifold": round(float(_rows_fully_inside(
+            attacks, feature_stats, FEATURE_COLUMNS)), 4),
+        "mimicry_vector_note": (
+            "mean_ks_vs_legit averages 26 features, 16 of which are inherited from a "
+            "real host and match by construction; mean_ks_controlled is the same "
+            "distance over the columns the red team actually sets."),
         "mimicry_mean_ks_vs_legit": float(per_vector.loc[
             per_vector["vector"] == MIMICRY_VECTOR, "mean_ks_vs_legit"].iloc[0])
+            if (per_vector["vector"] == MIMICRY_VECTOR).any() else None,
+        "mimicry_mean_ks_controlled": float(per_vector.loc[
+            per_vector["vector"] == MIMICRY_VECTOR, "mean_ks_controlled"].iloc[0])
             if (per_vector["vector"] == MIMICRY_VECTOR).any() else None,
         "per_vector": per_vector,          # DataFrame — popped out by the caller
         "mimicry_ks_table": mimic_ks,      # DataFrame — popped out by the caller

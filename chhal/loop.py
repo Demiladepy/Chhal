@@ -65,7 +65,51 @@ class LoopResult:
     fidelity_ks_table: pd.DataFrame = field(default_factory=pd.DataFrame)    # mimic feature KS
     fidelity_legit: pd.DataFrame = field(default_factory=pd.DataFrame)       # legit sample (plot)
     fidelity_mimic: pd.DataFrame = field(default_factory=pd.DataFrame)       # mimic attacks (plot)
+    # Evidence for the no-leakage claim, computed rather than asserted. Every count in
+    # here must be zero; see `_leakage_audit`.
+    leakage_audit: Dict = field(default_factory=dict)
     config: Dict = field(default_factory=dict)
+
+
+def _row_keys(df: pd.DataFrame) -> set:
+    """Exact-match identity for feature rows, for the leakage audit only.
+
+    Rounded at nine places so a float round-trip through concat/parquet cannot make a
+    leaked row look novel. Two genuinely distinct rows colliding on all 26 features is
+    not a failure mode worth engineering around; a leaked row slipping through is.
+    """
+    return set(map(tuple, np.round(df[FEATURE_COLUMNS].to_numpy(float), 9)))
+
+
+def _host_accounts(batches: List[AttackBatch]) -> set:
+    """The real accounts a set of batches was mounted on."""
+    out: set = set()
+    for b in batches:
+        if b.timeline is not None and "host_account" in b.timeline.columns:
+            out |= set(pd.unique(b.timeline["host_account"]))
+    return out
+
+
+def _leakage_audit(train_pool, bench_attacks, bench_batches, pressure, base) -> Dict:
+    """Count the ways the headline could be cheating. Every number must be zero.
+
+    The docstring at the top of this file makes three promises. Mutation testing showed
+    all three were unguarded: deleting the benchmark/train separation, collapsing the
+    held-out slice onto the train slice, and dropping the train/test account exclusion
+    each left the whole suite green — the first two make recall RISE, so the tests
+    passed harder for the leak. These counts are what a reader can check instead.
+    """
+    pool_keys = _row_keys(train_pool)
+    bench_accounts = _host_accounts(bench_batches)
+    return {
+        "benchmark_rows": int(len(bench_attacks)),
+        "benchmark_rows_in_training_pool": int(len(_row_keys(bench_attacks) & pool_keys)),
+        "pressure_rows_in_training_pool":
+            int(len(_row_keys(pressure) & pool_keys)) if len(pressure) else 0,
+        "benchmark_host_accounts": int(len(bench_accounts)),
+        "benchmark_host_accounts_seen_in_train":
+            int(len(bench_accounts & set(base.train['_account'].unique()))),
+    }
 
 
 def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> LoopResult:
@@ -105,7 +149,8 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     bench_vec = np.concatenate([[b.vector_id] * len(b) for b in bench_batches])
 
     def bench_report(det: Detector, it: int):
-        return evaluate(det, legit_eval, bench_attacks, bench_vec, it, "heldout_novel")
+        return evaluate(det, legit_eval, bench_attacks, bench_vec, it, "heldout_novel",
+                        real_traffic=base.test)
 
     curve_rows: List[Dict] = []
     per_vec_rows: List[Dict] = []
@@ -120,6 +165,7 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
 
     train_pool = base.train.copy()
     last_adapted: List[AttackBatch] = []
+    last_pressure = pd.DataFrame(columns=FEATURE_COLUMNS)
 
     for t in range(1, cfg.iterations + 1):
         # 1. red team adapts a FRESH batch against the CURRENT detector
@@ -146,8 +192,10 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
                                  "recall_at_threshold_0.5": bench.per_vector_recall.get(vid, 0.0)})
 
         # 4b. PRESSURE — retrained detector on this iteration's fresh evasions
-        pressure = evaluate(detector, legit_eval, ho, ho_vec, t, "heldout_novel")
+        pressure = evaluate(detector, legit_eval, ho, ho_vec, t, "heldout_novel",
+                            real_traffic=base.test)
         curve_rows.append({**pressure.as_row(), "phase": "pressure"})
+        last_pressure = ho
 
     # a small sample of the final adapted attacks for the live-stream panel
     sample = pd.concat(
@@ -186,6 +234,8 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
         fidelity_legit=legit_pop.sample(
             min(6000, len(legit_pop)), random_state=cfg.seed).reset_index(drop=True),
         fidelity_mimic=mimic_attacks.reset_index(drop=True),
+        leakage_audit=_leakage_audit(train_pool, bench_attacks, bench_batches,
+                                     last_pressure, base),
         config={**asdict(cfg), "data_source": base.source,
                 "train_rows": len(base.train), "test_rows": len(base.test)},
     )

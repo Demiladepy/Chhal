@@ -183,6 +183,10 @@ class AttackVector(ABC):
                 "timestamp_s": camp.timestamp_s,
                 "amount": camp.amount,
                 "is_attack": camp.is_attack,
+                # Audit-only, never a feature: which real account each row was mounted
+                # on. It rides the timeline because the timeline is the one thing that
+                # survives the optimizer intact, which is where the audit has to look.
+                "host_account": camp.host_account,
                 **{c: camp.inherited[:, j] for j, c in enumerate(INHERITED_FEATURES)},
             }),
         ).validate()

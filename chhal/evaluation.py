@@ -40,16 +40,54 @@ from .detector import Detector
 DECISION_THRESHOLD = 0.5   # the naive cutoff, kept only as a comparison baseline
 
 
+def campaign_ids(b: AttackBatch) -> "np.ndarray | None":
+    """Which compromised account each of `b`'s attack rows belongs to, or None.
+
+    `AttackBatch.validate` guarantees the attack rows of the timeline correspond
+    one-to-one and in order with the feature rows, so the campaign label is just the
+    timeline's `entity` column restricted to those rows. Hand-built batches in tests
+    carry no timeline and get None.
+    """
+    if b.timeline is None or "entity" not in b.timeline.columns:
+        return None
+    ent = b.timeline.loc[b.timeline["is_attack"].astype(bool), "entity"].to_numpy()
+    return ent if len(ent) == len(b.transactions) else None
+
+
 def split_attacks(
     batches: List[AttackBatch], heldout_frac: float, rng: np.random.Generator
 ):
-    """Split each vector's rows into (train, heldout_novel), preserving vector labels."""
+    """Split each vector's rows into (train, heldout_novel), preserving vector labels.
+
+    The split is by CAMPAIGN, not by row. A campaign is one compromised host account
+    and its 3-60 transactions, and every one of those rows carries that account's
+    inherited age, merchant history and fourteen linkage counts. Splitting rows at
+    random left 98.1% of the "never trained on" rows sharing a host with a row the
+    detector had just learned, so `heldout_novel` was scoring memorised accounts at
+    least as much as novel attacks. Whole campaigns go to one side or the other.
+
+    Batches with no timeline (hand-built, in tests) fall back to the row split, and a
+    vector that produced a single campaign cannot be split at all — it goes to train,
+    which is the honest outcome rather than a fabricated holdout.
+    """
     train_frames, heldout_frames, heldout_vectors = [], [], []
     for b in batches:
         n = len(b)
-        idx = rng.permutation(n)
-        k = int(n * (1 - heldout_frac))
-        tr, ho = b.transactions.iloc[idx[:k]], b.transactions.iloc[idx[k:]]
+        ent = campaign_ids(b)
+        if ent is None:
+            idx = rng.permutation(n)
+            k = int(n * (1 - heldout_frac))
+            tr_idx, ho_idx = idx[:k], idx[k:]
+        else:
+            uniq = pd.unique(ent)
+            order = rng.permutation(len(uniq))
+            k = int(round(len(uniq) * (1 - heldout_frac)))
+            if len(uniq) > 1:
+                k = min(max(k, 1), len(uniq) - 1)
+            held = set(uniq[order[k:]])
+            is_held = np.fromiter((e in held for e in ent), dtype=bool, count=n)
+            tr_idx, ho_idx = np.flatnonzero(~is_held), np.flatnonzero(is_held)
+        tr, ho = b.transactions.iloc[tr_idx], b.transactions.iloc[ho_idx]
         train_frames.append(tr)
         heldout_frames.append(ho)
         heldout_vectors.extend([b.vector_id] * len(ho))
@@ -59,19 +97,42 @@ def split_attacks(
 
 
 def threshold_for_fpr(legit_proba: np.ndarray, fpr: float) -> float:
-    """The score above which exactly `fpr` of legitimate traffic sits."""
+    """The lowest score whose `>=` rule flags AT MOST `fpr` of legitimate traffic.
+
+    A quantile on its own is not enough, and the difference is not academic. A gradient
+    boosted ensemble emits large blocks of identical scores; the quantile routinely
+    lands *inside* one, and `>=` then sweeps the whole block in. Measured on this
+    detector, that reported recall "at a 0.1% budget" while the threshold was really
+    flagging 43.9% of legitimate traffic — a budget quoted, not honoured.
+
+    So walk the distinct scores and take the lowest one whose realised rate actually
+    fits. If even the single highest block busts the budget, return a threshold above
+    every score: recall 0 is the honest answer, not recall bought on credit.
+    """
     if len(legit_proba) == 0:
         return float("inf")
-    return float(np.quantile(legit_proba, 1.0 - fpr))
+    s = np.sort(legit_proba)
+    uniq = np.unique(s)
+    n_at_or_above = len(s) - np.searchsorted(s, uniq, side="left")
+    fits = np.flatnonzero(n_at_or_above <= fpr * len(s))
+    if len(fits) == 0:
+        return float(uniq[-1]) + 1.0
+    return float(uniq[fits[0]])
 
 
 def recall_at_fpr(legit_proba: np.ndarray, attack_proba: np.ndarray,
-                  fpr: float) -> Tuple[float, float]:
-    """Fraction of attacks caught when the threshold is set to flag `fpr` of legit traffic."""
+                  fpr: float) -> Tuple[float, float, float]:
+    """Recall and threshold at `fpr` — plus the false-positive rate actually realised.
+
+    The third value exists so the budget can be checked rather than trusted. It is at
+    most `fpr` by construction of `threshold_for_fpr`, and reporting it is what makes
+    that claim auditable from the results files alone.
+    """
     thr = threshold_for_fpr(legit_proba, fpr)
+    realised = float((legit_proba >= thr).mean()) if len(legit_proba) else 0.0
     if len(attack_proba) == 0:
-        return 0.0, thr
-    return float((attack_proba >= thr).mean()), thr
+        return 0.0, thr, realised
+    return float((attack_proba >= thr).mean()), thr, realised
 
 
 def evaluate(
@@ -81,19 +142,29 @@ def evaluate(
     attack_vectors: np.ndarray,
     iteration: int,
     split: str,
+    real_traffic: "pd.DataFrame | None" = None,
 ) -> ScoreReport:
-    """Score the detector on legit (label 0) + attack (label 1) rows."""
+    """Score the detector on legit (label 0) + attack (label 1) rows.
+
+    `real_traffic`, when given, is the untouched real test set — legitimate rows AND
+    real fraud, no generated attacks. It is used for one number only, the alert rate an
+    ops team would actually see, because the alert rate over the scored mixture is a
+    function of how many attacks the run generated and is not an operational figure.
+    """
     X = pd.concat([legit[FEATURE_COLUMNS], attacks[FEATURE_COLUMNS]], ignore_index=True)
     y = np.concatenate([np.zeros(len(legit)), np.ones(len(attacks))])
     proba = detector.score(X)
     legit_proba, attack_proba = proba[: len(legit)], proba[len(legit):]
 
     # --- the numbers worth quoting -------------------------------------------------
-    rec_at, thr_at = {}, {}
+    rec_at, thr_at, realised_at = {}, {}, {}
     for fpr in OPERATING_POINTS:
-        rec_at[fpr], thr_at[fpr] = recall_at_fpr(legit_proba, attack_proba, fpr)
+        rec_at[fpr], thr_at[fpr], realised_at[fpr] = recall_at_fpr(
+            legit_proba, attack_proba, fpr)
     primary_thr = thr_at.get(PRIMARY_FPR, threshold_for_fpr(legit_proba, PRIMARY_FPR))
     alert_rate = float((proba >= primary_thr).mean())
+    alert_real = (float((detector.score(real_traffic[FEATURE_COLUMNS]) >= primary_thr).mean())
+                  if real_traffic is not None and len(real_traffic) else 0.0)
     pr_auc = float(average_precision_score(y, proba)) if len(np.unique(y)) > 1 else 0.0
 
     per_vector_at_fpr: Dict[str, float] = {}
@@ -121,7 +192,9 @@ def evaluate(
         pr_auc=pr_auc,
         recall_at_fpr=rec_at,
         threshold_at_fpr=thr_at,
+        realised_fpr_at_fpr=realised_at,
         alert_rate=alert_rate,
+        alert_rate_on_real_traffic=alert_real,
         per_vector_recall=per_vector,
         per_vector_recall_at_fpr=per_vector_at_fpr,
         top_features=detector.top_gain_features(),

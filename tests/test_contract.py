@@ -19,7 +19,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from chhal.behaviour import consistency_violations
-from chhal.contract import FEATURE_COLUMNS, INTEGER_FEATURES, AttackBatch
+from chhal.contract import (FEATURE_COLUMNS, INTEGER_FEATURES,
+                            OPERATING_POINTS, PRIMARY_FPR, AttackBatch)
 from chhal.data import DEFAULT_IEEE_PARQUET, load_base_data
 from chhal.detector import Detector
 from chhal.loop import LoopConfig, run_loop
@@ -61,7 +62,10 @@ def test_all_vectors_emit_frozen_feature_space():
         assert list(batch.transactions.columns) == FEATURE_COLUMNS
         assert len(batch) == 20
         for col in INTEGER_FEATURES:
-            assert (batch.transactions[col] % 1 == 0).all(), f"{col} must be whole numbers"
+            # dtype, not `% 1 == 0` — a float column satisfies the latter, so dropping
+            # the integer coercion entirely left this assertion green.
+            assert pd.api.types.is_integer_dtype(batch.transactions[col]), (
+                f"{col} is {batch.transactions[col].dtype}, not an integer type")
 
 
 def test_calibrated_vectors_stay_inside_the_real_value_range():
@@ -142,21 +146,50 @@ def test_loop_runs_and_produces_a_curve():
     )
     assert result.config["data_source"] == "synthetic"   # provenance must be recorded
     assert {"benchmark", "pressure"}.issubset(set(result.curve["phase"]))
-    assert result.curve["f1"].between(0, 1).all()
-    assert result.curve["fp_rate_on_legit"].between(0, 1).all()
+
+    # Every operating point must have honoured the budget it is named after. The old
+    # assertions here were `f1.between(0, 1)` and `fp_rate.between(0, 1)`, which are
+    # true of any number a probability can be — they passed with inverted predictions.
+    for fpr in OPERATING_POINTS:
+        realised = result.curve[f"realised_fpr_{fpr}"]
+        assert (realised <= fpr + 1e-12).all(), (
+            f"a threshold quoted at {fpr} realised {realised.max()}")
 
     # the closed loop must lift benchmark recall well above the static baseline:
-    # generalisation to attacks the detector never trained on.
+    # generalisation to attacks the detector never trained on. Both a RISE and a FLOOR
+    # — the rise alone would pass while recall collapsed from 0.92 to 0.30.
     bench = result.curve[result.curve["phase"] == "benchmark"].sort_values("iteration")
+    primary = f"recall_at_fpr_{PRIMARY_FPR}"
     assert bench["recall"].iloc[-1] > bench["recall"].iloc[0] + 0.3
+    assert bench[primary].iloc[-1] > bench[primary].iloc[0] + 0.2
+    assert bench[primary].iloc[-1] > 0.30, (
+        f"the loop ends at {bench[primary].iloc[-1]:.3f} recall inside a "
+        f"{PRIMARY_FPR:.1%} budget — it rose, but from and to nowhere useful")
 
     # fidelity is populated and the guardrail keeps what the attacker SETS on the
     # manifold. The derived block is reported, not constrained — see fidelity.py.
     assert result.fidelity["on_manifold_rate"] > 0.98
+    # ...and because that number is ~1.0 BY CONSTRUCTION (the optimizer clips to exactly
+    # these bounds), assert the non-tautological companion too: the guardrail has to
+    # have actually bound on a meaningful share of proposals, or it is decorative.
+    assert result.fidelity["frac_off_manifold_pre_clip"] > 0.01, (
+        "the plausibility guardrail never bound on anything")
     assert 0.0 <= result.fidelity["derived_on_manifold_rate"] <= 1.0
-    assert 0.0 <= result.fidelity["mimicry_mean_ks_vs_legit"] <= 1.0
+
+    # The mimicry claim, as a comparison rather than a range check. `0 <= ks <= 1` is
+    # true by the definition of KS and passed with attacks identical to legit AND with
+    # attacks at 1e12.
+    ks = result.fidelity_per_vector.set_index("vector")["mean_ks_vs_legit"]
+    assert ks["threshold_hugging"] < ks.max() * 0.75, (
+        f"the mimicry vector is not measurably closer to legit than the loudest one: "
+        f"{ks.to_dict()}")
     assert set(result.fidelity_per_vector.columns) == {
-        "vector", "mean_ks_vs_legit", "features_like_legit"}
+        "vector", "mean_ks_vs_legit", "mean_ks_controlled",
+        "features_like_legit", "controlled_like_legit", "n_controlled"}
+    # the restricted distance must be the LARGER one — if it is not, the inherited
+    # columns are not matching by construction and something upstream is wrong
+    fpv = result.fidelity_per_vector
+    assert (fpv["mean_ks_controlled"] >= fpv["mean_ks_vs_legit"] - 1e-9).all(), fpv
     # the mimicry vector must be the closest to legit of all vectors
     pv = result.fidelity_per_vector.sort_values("mean_ks_vs_legit")
     assert pv.iloc[0]["vector"] == "threshold_hugging"

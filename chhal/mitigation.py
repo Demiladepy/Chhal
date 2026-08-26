@@ -35,6 +35,7 @@ They are meant to be argued with and re-run, not believed.
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Dict
@@ -129,9 +130,13 @@ class CostModel:
 
         allow = p * loss
         block = q * decline
-        step_up = (p * (1 - self.stepup_catch_rate) * loss
-                   + q * (self.stepup_fixed_cost
-                          + self.stepup_abandon_rate * decline))
+        # The challenge fee is paid on BOTH branches. Issuing a 3DS/OTP costs the same
+        # whether the person behind the card turns out to be a fraudster or the
+        # cardholder; charging it only to the legitimate branch quietly made step-up
+        # look cheaper than it is on exactly the rows it is chosen for.
+        step_up = (self.stepup_fixed_cost
+                   + p * (1 - self.stepup_catch_rate) * loss
+                   + q * self.stepup_abandon_rate * decline)
         review = (self.review_cost + self.review_delay_cost
                   + p * (1 - self.review_accuracy) * loss
                   + q * (1 - self.review_accuracy) * decline)
@@ -143,7 +148,17 @@ class CostModel:
 # ---------------------------------------------------------------------------
 @dataclass
 class PolicyConfig:
+    """The operational ceilings the policy has to fit inside.
+
+    `max_stepup_rate` exists because leaving it out was an inconsistency, not an
+    oversight: the unconstrained policy argued an 8% review rate "is not deployable"
+    while itself challenging 15.2% of all traffic and 14.3% of legitimate customers.
+    A challenge is cheaper than an analyst, not free — every one of them is a customer
+    stopped mid-payment — so it gets a budget too.
+    """
+
     max_review_rate: float = 0.005   # analysts can only look at 0.5% of traffic
+    max_stepup_rate: float | None = 0.05  # 3DS/OTP friction budget, share of ALL traffic
     max_block_rate: float | None = None   # optional hard ceiling on outright declines
 
 
@@ -164,21 +179,38 @@ class ActionPolicy:
     def decide(self, p_fraud: np.ndarray, amount: np.ndarray) -> np.ndarray:
         cost = self.costs.expected_costs(p_fraud, amount)
         actions = cost.argmin(axis=1)
-        actions = self._ration(actions, cost, Action.REVIEW, self.cfg.max_review_rate)
+        # Order matters, and so does `closed`. Each pass demotes what it cannot afford
+        # into the next-best action, so a later pass must not be allowed to spill back
+        # into a queue an earlier pass has already filled to its cap.
+        closed: list[int] = []
+        actions = self._ration(actions, cost, Action.REVIEW, self.cfg.max_review_rate, closed)
+        closed.append(int(Action.REVIEW))
+        if self.cfg.max_stepup_rate is not None:
+            actions = self._ration(actions, cost, Action.STEP_UP,
+                                   self.cfg.max_stepup_rate, closed)
+            closed.append(int(Action.STEP_UP))
         if self.cfg.max_block_rate is not None:
-            actions = self._ration(actions, cost, Action.BLOCK, self.cfg.max_block_rate)
+            actions = self._ration(actions, cost, Action.BLOCK, self.cfg.max_block_rate, closed)
         return actions
 
     @staticmethod
     def _ration(actions: np.ndarray, cost: np.ndarray, action: int,
-                max_rate: float) -> np.ndarray:
-        """Keep only the `max_rate` share of `action` that buys the most, demote the rest."""
+                max_rate: float, closed=()) -> np.ndarray:
+        """Keep only the `max_rate` share of `action` that buys the most, demote the rest.
+
+        `closed` names actions whose own budget has already been allocated by an earlier
+        pass. Without it, demotions land wherever the cost matrix points — which put the
+        review queue 74% over its cap once a second pass ran after it. ALLOW is never
+        closed, so a fallback always exists.
+        """
         chosen = np.flatnonzero(actions == action)
         budget = int(round(max_rate * len(actions)))
         if len(chosen) <= budget:
             return actions
         alt = cost[chosen].copy()
         alt[:, action] = np.inf                      # cost of the next-best action
+        for c in closed:
+            alt[:, c] = np.inf
         benefit = alt.min(axis=1) - cost[chosen, action]
         keep = chosen[np.argsort(benefit)[::-1][:budget]]
         demoted = np.setdiff1d(chosen, keep, assume_unique=False)
@@ -206,7 +238,7 @@ class ActionPolicy:
         out[b & ~fraud] = decline[b & ~fraud]
 
         s = actions == Action.STEP_UP
-        out[s & fraud] = (1 - c.stepup_catch_rate) * loss[s & fraud]
+        out[s & fraud] = c.stepup_fixed_cost + (1 - c.stepup_catch_rate) * loss[s & fraud]
         out[s & ~fraud] = c.stepup_fixed_cost + c.stepup_abandon_rate * decline[s & ~fraud]
 
         r = actions == Action.REVIEW
@@ -225,7 +257,12 @@ class ActionPolicy:
             "action_mix": {ACTION_NAMES[a]: round(float((actions == a).mean()), 5)
                            for a in Action},
             "review_rate": round(float((actions == Action.REVIEW).mean()), 5),
+            "stepup_rate": round(float((actions == Action.STEP_UP).mean()), 5),
+            # The two numbers a customer-experience team would ask for first: what share
+            # of genuine customers this policy declines outright, and what share it
+            # stops mid-payment to challenge.
             "block_rate_on_legit": round(float((actions[~fraud] == Action.BLOCK).mean()), 5),
+            "stepup_rate_on_legit": round(float((actions[~fraud] == Action.STEP_UP).mean()), 5),
             "fraud_touched_rate": round(float(stopped[fraud].mean()), 5),
             "fraud_blocked_rate": round(float((actions[fraud] == Action.BLOCK).mean()), 5),
             "total_cost": round(float(realised.sum()), 2),
@@ -258,7 +295,8 @@ def _cost_if_all(costs: CostModel, action: int, y_true: np.ndarray,
 
 
 def tune_two_thresholds(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarray,
-                        amount: np.ndarray) -> tuple[float, float]:
+                        amount: np.ndarray,
+                        max_stepup_frac: float | None = None) -> tuple[float, float]:
     """The best amount-BLIND policy that exists, found exactly rather than guessed.
 
     `block at score >= 0.5` is a straw man: nobody deploys an untuned threshold, so
@@ -271,6 +309,13 @@ def tune_two_thresholds(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarra
     over all threshold pairs rather than the best of a sampled grid. Tune on a slice, then
     price on another: a comparator tuned on its own evaluation set would be unbeatable and
     meaningless.
+
+    `max_stepup_frac` holds the comparator to the same friction budget the policy has to
+    live inside. Without it the comparison quietly stopped being fair the moment step-up
+    was capped: our policy could challenge 5% of traffic and the thing we measured
+    ourselves against could challenge all of it. A ladder's step-up band IS a contiguous
+    block of score-sorted rows, so the constraint is just a width limit on that block,
+    and a sliding-window minimum keeps the search exact and linear.
     """
     order = np.argsort(p_fraud, kind="stable")
     ps, ys, amts = p_fraud[order], y_true[order], amount[order]
@@ -284,9 +329,23 @@ def tune_two_thresholds(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarra
     # rows [0,i) allow, [i,j) step_up, [j,n) block
     #   cost(i, j) = A[i] + (S[j] - S[i]) + (B[n] - B[j])
     #              = (A - S)[i] + (S - B)[j] + B[n]
-    d = A - S
-    j = int(np.argmin(np.minimum.accumulate(d) + (S - B)))
-    i = int(np.argmin(d[: j + 1]))
+    d, g = A - S, S - B
+    if max_stepup_frac is None:
+        j = int(np.argmin(np.minimum.accumulate(d) + g))
+        i = int(np.argmin(d[: j + 1]))
+    else:
+        width = int(round(max_stepup_frac * n))
+        window: deque = deque()       # indices of d, values increasing
+        best, i, j = np.inf, 0, 0
+        for k in range(n + 1):
+            while window and d[window[-1]] >= d[k]:
+                window.pop()
+            window.append(k)
+            while window[0] < k - width:
+                window.popleft()
+            total = d[window[0]] + g[k]
+            if total < best:
+                best, i, j = total, window[0], k
 
     hi = float(ps[-1]) + 1.0
     return (hi if i >= n else float(ps[i])), (hi if j >= n else float(ps[j]))

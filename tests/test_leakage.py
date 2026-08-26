@@ -1,0 +1,168 @@
+"""The tests that were missing when it mattered.
+
+A mutation run over this project killed 8 of 17 mutants. Every survivor was a
+LEAKAGE-DISCIPLINE mutation — benchmark rows injected into training, the held-out
+slice collapsed onto the train slice, the train/test account exclusion deleted, the
+temporal split swapped for a random one. The suite was strong on leaf primitives and
+blind on the wiring, which is precisely where the headline claims live.
+
+The reason those mutants survived is worth stating plainly, because it generalises:
+**leaking makes the numbers go UP**, so a test that asserts "recall improved" passes
+harder the more the run cheats. Nothing here asserts that a number is good. Everything
+here asserts that a number was earned.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN                  # noqa: E402
+from chhal.data import load_base_data                                     # noqa: E402
+from chhal.detector import Detector                                       # noqa: E402
+from chhal.evaluation import campaign_ids, split_attacks                  # noqa: E402
+from chhal.loop import LoopConfig, run_loop                               # noqa: E402
+from chhal.redteam import ALL_VECTORS                                     # noqa: E402
+from chhal.redteam.base import BaseProfile                                # noqa: E402
+from chhal.redteam.hosts import HostPool                                  # noqa: E402
+
+SMALL = dict(source="synthetic", n_legit=4000, n_baseline_fraud=100)
+
+
+@pytest.fixture(scope="module")
+def loop_result():
+    return run_loop(
+        LoopConfig(iterations=2, attacks_per_vector=150, benchmark_per_vector=150, seed=3),
+        base=load_base_data(seed=3, **SMALL),
+    )
+
+
+def test_not_one_benchmark_row_reaches_the_training_pool(loop_result):
+    """The headline is benchmark recall. If a benchmark row can be trained on, the
+    headline measures memory. Mutating the loop to inject them left every other test
+    green — recall simply rose."""
+    audit = loop_result.leakage_audit
+    assert audit["benchmark_rows"] > 0, "nothing was benchmarked; the audit is vacuous"
+    assert audit["benchmark_rows_in_training_pool"] == 0, audit
+
+
+def test_the_pressure_slice_is_not_also_the_training_slice(loop_result):
+    """`split_attacks` returns (train, heldout). Mutating it to return the same frame
+    twice was invisible to the suite: nothing compared the two."""
+    audit = loop_result.leakage_audit
+    assert audit["pressure_rows_in_training_pool"] == 0, audit
+
+
+def test_benchmark_attacks_compromise_accounts_the_detector_never_trained_on(loop_result):
+    """Sixteen of twenty-six features are inherited from the compromised account. An
+    evaluation attack mounted on a TRAIN account carries issuer-side context the
+    detector has already seen, which is leakage wearing a red team's clothes."""
+    audit = loop_result.leakage_audit
+    assert audit["benchmark_host_accounts"] > 0
+    assert audit["benchmark_host_accounts_seen_in_train"] == 0, audit
+
+
+def test_the_exclusion_is_what_keeps_the_pools_apart_not_luck():
+    """Directly: the same construction WITHOUT `exclude_accounts` does overlap. If this
+    ever stops being true the test above has become a tautology and should be deleted."""
+    base = load_base_data(seed=3, **SMALL)
+    train_accounts = set(base.train["_account"].unique())
+    guarded = HostPool(base.test, exclude_accounts=base.train["_account"])
+    unguarded = HostPool(base.test)
+    assert not (set(guarded.accounts) & train_accounts)
+    assert set(unguarded.accounts) & train_accounts, (
+        "the splits do not share accounts at all, so the exclusion proves nothing here")
+
+
+def test_a_campaign_never_straddles_the_train_heldout_boundary():
+    """Every row of a campaign shares one host's age, merchant history and fourteen
+    linkage counts. Splitting rows at random put 98.1% of the "never trained on" rows
+    in an account the detector had just learned."""
+    base = load_base_data(seed=4, **SMALL)
+    rng = np.random.default_rng(4)
+    profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    hosts = HostPool(base.train)
+    batches = [V().calibrate(profile, hosts).batch(200, 1, rng) for V in ALL_VECTORS]
+
+    tr, ho, ho_vec = split_attacks(batches, 0.4, rng)
+    assert len(tr) and len(ho) and len(ho) == len(ho_vec)
+
+    # rebuild the campaign label for each side by matching rows back to their batch
+    tr_keys = set(map(tuple, np.round(tr[FEATURE_COLUMNS].to_numpy(float), 9)))
+    ho_keys = set(map(tuple, np.round(ho[FEATURE_COLUMNS].to_numpy(float), 9)))
+    assert not (tr_keys & ho_keys), "a row is on both sides of the split"
+
+    for b in batches:
+        ent = campaign_ids(b)
+        assert ent is not None, f"{b.vector_id} lost its timeline; the split cannot be honest"
+        rows = np.round(b.transactions[FEATURE_COLUMNS].to_numpy(float), 9)
+        side = {}
+        for e, row in zip(ent, map(tuple, rows)):
+            if row in tr_keys:
+                side.setdefault(e, set()).add("train")
+            if row in ho_keys:
+                side.setdefault(e, set()).add("heldout")
+        straddling = [e for e, s in side.items() if len(s) > 1]
+        assert not straddling, (
+            f"{b.vector_id}: {len(straddling)} campaigns have rows on both sides")
+
+
+def test_a_single_campaign_cannot_be_split_and_does_not_pretend_to_be():
+    """The degenerate case, made explicit: one campaign goes to train whole. Faking a
+    holdout out of its own rows is exactly the thing this split exists to stop."""
+    base = load_base_data(seed=6, **SMALL)
+    rng = np.random.default_rng(6)
+    profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    batch = ALL_VECTORS[0]().calibrate(profile, HostPool(base.train)).batch(3, 1, rng)
+    ent = campaign_ids(batch)
+    if len(set(ent)) != 1:
+        pytest.skip("this batch spans more than one campaign")
+    tr, ho, _ = split_attacks([batch], 0.4, rng)
+    assert len(ho) == 0 and len(tr) == len(batch)
+
+
+def test_the_detector_is_deterministic_at_a_fixed_seed():
+    """`random_state` could be deleted and nothing noticed. Every paired comparison in
+    this project — the ablation, the ensemble check, the arms-race curve — reads a
+    difference between two runs and would silently be reading noise instead."""
+    base = load_base_data(seed=2, **SMALL)
+    X = base.test[FEATURE_COLUMNS]
+    a = Detector(seed=11).fit(base.train, LABEL_COLUMN).score(X)
+    b = Detector(seed=11).fit(base.train, LABEL_COLUMN).score(X)
+    assert np.array_equal(a, b), "same seed, different scores"
+    c = Detector(seed=12).fit(base.train, LABEL_COLUMN).score(X)
+    assert not np.array_equal(a, c), (
+        "different seeds give identical scores — the seed is not wired to anything")
+
+
+def test_the_base_split_is_temporal_not_random():
+    """`prepare_ieee.py` has no test of its own, and swapping its temporal split for a
+    random one survived mutation. A random split lets the detector learn from the
+    future, which is the single most flattering mistake in fraud modelling."""
+    base = load_base_data(seed=1, **SMALL)
+    assert base.train["_ts"].max() <= base.test["_ts"].min(), (
+        "train and test overlap in time")
+
+
+def test_integer_features_are_integers_by_dtype_not_by_luck():
+    """The old assertion was `x % 1 == 0`, which a float column satisfies. Dropping the
+    integer coercion left it green."""
+    from chhal.contract import INTEGER_FEATURES
+    base = load_base_data(seed=8, **SMALL)
+    rng = np.random.default_rng(8)
+    profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    hosts = HostPool(base.train)
+    for V in ALL_VECTORS:
+        rows = V().calibrate(profile, hosts).batch(20, 1, rng).transactions
+        for col in INTEGER_FEATURES:
+            assert pd.api.types.is_integer_dtype(rows[col]), (
+                f"{V.vector_id}.{col} is {rows[col].dtype}, not an integer type")
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-q"]))

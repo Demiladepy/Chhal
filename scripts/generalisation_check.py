@@ -7,8 +7,8 @@ bands, so once the detector has seen a thousand of them, held-out rows from the 
 bands are trivial. The competition asks for defence against *emerging, novel* attacks,
 which is the harder question.
 
-So: train on three vectors, score the fourth, which the detector has never seen in any
-form. Recall is reported at a FIXED low false-positive operating point (0.1% of real
+So: train on every vector but one, score the one held out, which the detector has never
+seen in any form. Recall is reported at a FIXED low false-positive operating point (0.1% of real
 legitimate traffic), not at an arbitrary 0.5 threshold — that is how a payments system
 is actually tuned.
 """
@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN            # noqa: E402
 from chhal.data import load_base_data                               # noqa: E402
 from chhal.detector import Detector                                 # noqa: E402
+from chhal.evaluation import threshold_for_fpr                      # noqa: E402
 from chhal.optimizer import EvasionOptimizer                        # noqa: E402
 from chhal.redteam import ALL_VECTORS                               # noqa: E402
 from chhal.redteam.base import BaseProfile                          # noqa: E402
@@ -35,8 +36,15 @@ TARGET_FPR = 0.001          # 0.1% of legitimate traffic flagged
 
 
 def recall_at_fpr(det, legit, attacks, fpr=TARGET_FPR):
-    """Threshold set so exactly `fpr` of real legit traffic is flagged; recall there."""
-    thr = np.quantile(det.score(legit), 1 - fpr)
+    """Threshold set so at most `fpr` of real legit traffic is flagged; recall there.
+
+    Uses the shared `threshold_for_fpr` rather than a local `np.quantile`, which is not
+    a stylistic preference: a bare quantile can land inside a block of tied scores and
+    the `>=` rule then flags the whole block, overshooting the budget it claims. This
+    script quotes its numbers "at 0.1% FPR", so it has to honour that the same way the
+    loop does.
+    """
+    thr = threshold_for_fpr(det.score(legit), fpr)
     return float((det.score(attacks) >= thr).mean()), float(thr)
 
 
@@ -74,18 +82,19 @@ def main() -> None:
         r_base, _ = recall_at_fpr(baseline, legit_eval, adapted[held])
         rows.append({"held_out_vector": held,
                      "recall_baseline": round(r_base, 4),
-                     "recall_if_seen(avg of other 3)": round(r_seen, 4),
+                     "recall_if_seen(avg of the rest)": round(r_seen, 4),
                      "recall_UNSEEN": round(r_unseen, 4)})
         print(f"  {held:<18} baseline={r_base:.3f}  seen={r_seen:.3f}  UNSEEN={r_unseen:.3f}")
 
     df = pd.DataFrame(rows)
     print(f"\n=== leave-one-vector-out, recall @ {TARGET_FPR:.1%} FPR on real legit traffic ===")
     print(df.to_string(index=False))
-    gap = df["recall_if_seen(avg of other 3)"].mean() - df["recall_UNSEEN"].mean()
-    print(f"\nmean recall when the vector WAS trained on : {df['recall_if_seen(avg of other 3)'].mean():.3f}")
+    gap = df["recall_if_seen(avg of the rest)"].mean() - df["recall_UNSEEN"].mean()
+    print(f"\nmean recall when the vector WAS trained on : {df['recall_if_seen(avg of the rest)'].mean():.3f}")
     print(f"mean recall when the vector was NEVER seen : {df['recall_UNSEEN'].mean():.3f}")
     print(f"generalisation gap                         : {gap:.3f}")
     out = Path(__file__).resolve().parents[1] / "results" / "generalisation_leave_one_out.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)   # 28s of work should not die on a mkdir
     df.to_csv(out, index=False)
     print(f"\n-> {out}")
 

@@ -59,6 +59,10 @@ class Host:
     history_ts: np.ndarray        # real transaction times, ascending
     history_amount: np.ndarray    # real transaction amounts
     inherited: np.ndarray         # values of INHERITED_FEATURES at its last transaction
+    # Which real account this is. Never a feature — it exists so the loop can PROVE
+    # that evaluation attacks were mounted on accounts the detector never trained on,
+    # rather than asserting it in a docstring. See loop.leakage_audit.
+    account: object = None
 
     @property
     def last_ts(self) -> int:
@@ -88,6 +92,7 @@ class HostPool:
         ends = np.r_[starts[1:], len(acct)]
         keep = (ends - starts) >= min_history
         self._starts, self._ends = starts[keep], ends[keep]
+        self._acct = acct[self._starts]          # the account id of each kept host
 
         self._ts = df[TIME_COLUMN].to_numpy(np.int64)
         self._amt = df["amount"].to_numpy(np.float64)
@@ -104,10 +109,16 @@ class HostPool:
     def __len__(self) -> int:
         return len(self._starts)
 
+    @property
+    def accounts(self) -> np.ndarray:
+        """Every account this pool is willing to compromise."""
+        return self._acct
+
     def _host(self, i: int) -> Host:
         s, e = self._starts[i], self._ends[i]
         return Host(history_ts=self._ts[s:e], history_amount=self._amt[s:e],
-                    inherited=self._inherited[e - 1])   # state at the last real transaction
+                    inherited=self._inherited[e - 1],   # state at the last real transaction
+                    account=self._acct[i])
 
     def sample(self, rng: np.random.Generator) -> Host:
         return self._host(int(rng.integers(0, len(self._starts))))

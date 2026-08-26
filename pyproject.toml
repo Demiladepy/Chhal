@@ -1,0 +1,31 @@
+[project]
+name = "chhal"
+version = "0.1.0"
+description = "A closed adversarial loop for payment fraud: generate attacks, defend, measure honestly."
+readme = "README.md"
+license = { file = "LICENSE" }
+
+# The supported window is narrow and it is not arbitrary. `numpy==1.26.4` ships no
+# wheel for 3.13 or 3.14, and `pyarrow==25.0.1` ships none for 3.9 — which is what a
+# bare `python3` still is on macOS. Undeclared, that combination fails at install with
+# a compiler error that looks like the project's fault. So it is declared.
+requires-python = ">=3.10,<3.13"
+
+dependencies = [
+  "numpy==1.26.4",
+  "pandas==2.2.2",
+  "pyarrow==25.0.1",
+  "scikit-learn==1.4.2",
+  "lightgbm==4.6.0",
+  "scipy==1.13.1",
+  "streamlit==1.37.1",
+  "plotly==5.23.0",
+  "matplotlib==3.8.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.2.0", "pyflakes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

@@ -22,6 +22,9 @@ class Detector:
             learning_rate=0.05,
             num_leaves=48,
             subsample=0.8,
+            # Without a non-zero frequency LightGBM never bags at all, so `subsample=0.8`
+            # sat here doing nothing: predictions were bit-identical at subsample=0.1.
+            subsample_freq=1,
             colsample_bytree=0.8,
             random_state=seed,
             n_jobs=-1,

@@ -84,6 +84,9 @@ class Campaigns:
     amount: np.ndarray
     is_attack: np.ndarray   # False for the host's real transactions
     inherited: np.ndarray   # (n_rows, len(INHERITED_FEATURES)) — the host's issuer-side state
+    # The real account each row was mounted on. Carried for auditing only — no feature
+    # is derived from it — so the no-leakage claim can be checked instead of trusted.
+    host_account: np.ndarray | None = None
 
     def truncate_to(self, n_attack_rows: int) -> "Campaigns":
         """Keep exactly the first `n_attack_rows` attack rows, and drop what follows.
@@ -111,6 +114,7 @@ class Campaigns:
             amount=self.amount[keep],
             is_attack=self.is_attack[keep],
             inherited=self.inherited[keep],
+            host_account=None if self.host_account is None else self.host_account[keep],
         )
 
 
@@ -165,7 +169,7 @@ def _takeover_time(last_real_ts: int, hour_band: tuple[float, float],
 def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
              rng: np.random.Generator, hosts) -> Campaigns:
     """Mount campaigns on real accounts until at least `n_attack_rows` attacks exist."""
-    ent, ts, amt, atk, inh = [], [], [], [], []
+    ent, ts, amt, atk, inh, acc = [], [], [], [], [], []
     produced, idx = 0, 0
 
     # One moment the whole batch answers to, when the vector is a coordinated one. Every
@@ -217,6 +221,7 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
         amt.append(np.r_[host.history_amount, a_amt])
         atk.append(np.r_[np.zeros(n_h, bool), np.ones(n_a, bool)])
         inh.append(np.tile(host.inherited, (n_h + n_a, 1)))
+        acc.append(np.full(n_h + n_a, host.account))
         produced += n_a
         idx += 1
 
@@ -226,4 +231,5 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
         amount=np.concatenate(amt),
         is_attack=np.concatenate(atk),
         inherited=np.concatenate(inh),
+        host_account=np.concatenate(acc),
     )

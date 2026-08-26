@@ -161,7 +161,8 @@ class StackedDetector:
         self._anomaly_fitted = anomaly is not None and anomaly._fitted
         self.columns = FEATURE_COLUMNS + [self.ANOMALY_COLUMN]
         self.model = LGBMClassifier(
-            n_estimators=300, learning_rate=0.05, num_leaves=48, subsample=0.8,
+            n_estimators=300, learning_rate=0.05, num_leaves=48,
+            subsample=0.8, subsample_freq=1,   # freq>0 or the subsample is ignored
             colsample_bytree=0.8, random_state=seed, n_jobs=-1, verbose=-1,
         )
         self._fitted = False

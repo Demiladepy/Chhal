@@ -208,7 +208,17 @@ class ScoreReport:
     pr_auc: float = 0.0                  # average precision — the honest summary
     recall_at_fpr: Dict[float, float] = field(default_factory=dict)
     threshold_at_fpr: Dict[float, float] = field(default_factory=dict)
-    alert_rate: float = 0.0              # share of ALL traffic flagged at PRIMARY_FPR
+    # The false-positive rate each threshold ACTUALLY realises. At most the budget it
+    # was asked for; carried so a reader can verify that from the results, not take it
+    # on trust. See evaluation.threshold_for_fpr for why the two can come apart.
+    realised_fpr_at_fpr: Dict[float, float] = field(default_factory=dict)
+    alert_rate: float = 0.0              # share of the SCORED MIXTURE flagged at PRIMARY_FPR
+    # Share of REAL traffic flagged at the same threshold. The number above is not an
+    # operational rate: the mixture it divides by is legitimate traffic plus however
+    # many attacks the run happened to generate, so it moves with a config knob
+    # (100 / 500 / 2000 attacks per vector took it 0.0016 -> 0.0080 -> 0.0319 with the
+    # detector unchanged). This one is measured on the real test set alone.
+    alert_rate_on_real_traffic: float = 0.0
     per_vector_recall: Dict[str, float] = field(default_factory=dict)
     per_vector_recall_at_fpr: Dict[str, float] = field(default_factory=dict)
     top_features: List[str] = field(default_factory=list)  # LightGBM gain ranking, not SHAP
@@ -220,6 +230,7 @@ class ScoreReport:
             # lead with the operating-point numbers
             "pr_auc": self.pr_auc,
             "alert_rate": self.alert_rate,
+            "alert_rate_on_real_traffic": self.alert_rate_on_real_traffic,
             # threshold-0.5 numbers, retained for comparison only
             "precision": self.precision,
             "recall": self.recall,
@@ -229,4 +240,5 @@ class ScoreReport:
         }
         for fpr in OPERATING_POINTS:
             row[f"recall_at_fpr_{fpr}"] = self.recall_at_fpr.get(fpr, float("nan"))
+            row[f"realised_fpr_{fpr}"] = self.realised_fpr_at_fpr.get(fpr, float("nan"))
         return row

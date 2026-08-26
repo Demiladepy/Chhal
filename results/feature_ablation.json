@@ -2,49 +2,49 @@
   {
     "features": "the 12 we hand-derived",
     "n": 12,
-    "recall@0.001": 0.0306,
-    "recall@0.005": 0.0855,
-    "recall@0.01": 0.1273,
-    "pr_auc": 0.1888
+    "recall@0.001": 0.0302,
+    "recall@0.005": 0.0873,
+    "recall@0.01": 0.1294,
+    "pr_auc": 0.1885
   },
   {
     "features": "+ linkage counts we built ourselves",
     "n": 20,
-    "recall@0.001": 0.0322,
-    "recall@0.005": 0.0892,
-    "recall@0.01": 0.1369,
-    "pr_auc": 0.1953
+    "recall@0.001": 0.0308,
+    "recall@0.005": 0.0918,
+    "recall@0.01": 0.1302,
+    "pr_auc": 0.1856
   },
   {
     "features": "+ the dataset's C1-C14",
     "n": 26,
-    "recall@0.001": 0.1973,
-    "recall@0.005": 0.3424,
-    "recall@0.01": 0.4053,
-    "pr_auc": 0.4736
+    "recall@0.001": 0.1941,
+    "recall@0.005": 0.3404,
+    "recall@0.01": 0.4076,
+    "pr_auc": 0.4789
   },
   {
     "features": "+ both",
     "n": 34,
-    "recall@0.001": 0.2035,
-    "recall@0.005": 0.3394,
-    "recall@0.01": 0.3967,
-    "pr_auc": 0.4724
+    "recall@0.001": 0.1937,
+    "recall@0.005": 0.3441,
+    "recall@0.01": 0.39,
+    "pr_auc": 0.4663
   },
   {
     "features": "+ C1-C14 and D1-D15",
     "n": 41,
-    "recall@0.001": 0.1929,
-    "recall@0.005": 0.3469,
-    "recall@0.01": 0.4131,
-    "pr_auc": 0.4878
+    "recall@0.001": 0.1978,
+    "recall@0.005": 0.3547,
+    "recall@0.01": 0.4076,
+    "pr_auc": 0.4864
   },
   {
     "features": "+ everything incl. 339 V (ceiling)",
     "n": 388,
-    "recall@0.001": 0.2163,
-    "recall@0.005": 0.3347,
-    "recall@0.01": 0.3776,
-    "pr_auc": 0.4714
+    "recall@0.001": 0.2237,
+    "recall@0.005": 0.3547,
+    "recall@0.01": 0.389,
+    "pr_auc": 0.4835
   }
 ]
