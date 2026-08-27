@@ -97,52 +97,75 @@ Lock these two structs and the field lists on day 1. Everything else can change.
 
 ---
 
-## Pillar 1 — IDENTIFY  (breadth = points; catalog ~15, build ~4)
+## Pillar 1 — IDENTIFY  (breadth = points; catalog 21, build 5)
 
-**STILL OPEN.** Four vectors are built. The brief asks for breadth "rather than a narrow
-handful", and four is a narrow handful. This is the weakest pillar and the catalog is the
-remaining work.
+A taxonomy of where **GenAI specifically** changes payment fraud. The full list below goes
+in the write-up (it is what "diversity of attacks" is scored on); the starred ones are
+implemented and run in the live loop.
 
-A taxonomy of where **GenAI specifically** changes payment fraud. Full list goes in the
-write-up (scores "diversity of attacks"); we implement the starred ones.
+**Two tracks — and be explicit about which is which:**
 
-**Two tracks — and be explicit about which is which (this was blurred in v1):**
-
-- **★ LIVE-LOOP vectors** emit transaction features and flow through the LightGBM detector.
-  These *are* the closed loop and the live demo.
-- **◆ SHOWCASE vectors** are text/agent/media attacks (voice clone, prompt injection). They
-  do **not** emit tabular features, so they cannot feed the tabular detector. We demo them
-  qualitatively and score them in the write-up for breadth — we do **not** pretend they close
-  the same loop. (Optional bridge: map a showcase attack's *outcome* into a transaction, e.g.
-  a successful voice-clone APP scam becomes an anomalous push payment — but only if time allows.)
+- **★ LIVE-LOOP vectors** emit transaction features in the frozen feature space and flow
+  through the LightGBM detector. These *are* the closed loop and the live demo. **Five are
+  built** — see `chhal/redteam/vectors.py`, `ALL_VECTORS`.
+- **◆ SHOWCASE vectors** are text/agent/media attacks (voice clone, prompt injection,
+  deepfake). They do **not** emit tabular features, so they cannot feed the tabular
+  detector. We demo them qualitatively and score them in the write-up for breadth — we do
+  **not** pretend they close the same loop. (Optional bridge: map a showcase attack's
+  *outcome* into a transaction, e.g. a successful voice-clone APP scam becomes an anomalous
+  push payment — but only if time allows.)
 
 **Synthetic identity & KYC**
+- ★ **Synthetic-identity bust-out** (`bustout`) — a GenAI identity passes onboarding, ages
+  quietly, then empties the account in an escalating burst to fresh beneficiaries — **live-loop**
 - GenAI identity bundles (face + docs + backstory) passing onboarding — ◆ showcase
 - Real-time deepfake defeating video-KYC / liveness — ◆ showcase
-- ★ **Synthetic-identity bust-out** — age a clean account, then max out — **live-loop**
+- AI-generated or tampered KYC documents beating OCR and tamper checks — ◆ showcase
 
 **Authorized Push Payment / social engineering**
+- ★ **UPI collect-request scam** (`upi_collect`, India rail — see edge below) — the victim
+  approves, then the money hops through fresh VPAs within minutes — **live-loop**
 - Voice-clone CEO / "hi mum" transfers — ◆ showcase
+- Deepfake video call impersonating a finance approver on a live call — ◆ showcase
 - AI call-center agent passing knowledge-based auth (account takeover) — ◆ showcase
-- ★ **UPI collect-request scam** (India rail — see edge below) — **live-loop** (as an
-  anomalous inbound-collect + rapid-drain transaction pattern)
+- LLM-generated phishing / smishing at scale, personalised per victim — ◆ showcase
 
-**Adversarial ML evasion**
-- ★ **Mimicry / threshold-hugging** — LLM/optimizer-guided transaction sequences that sit
-  just under velocity & amount rules and imitate the victim's normal behaviour.
-  ***This is the hero live-loop vector and the technical heart of the arms race.*** If we
-  cut everything else, this one stays.
-- ★ **Intelligent card-testing / BIN probing** that adapts to velocity limits — **live-loop**
+**Adversarial ML evasion — attacks aimed at the detector itself**
+- ★ **Mimicry / threshold-hugging** (`threshold_hugging`) — the campaign is sized and paced
+  from the *victim's own* history, not the population's, so nothing is anomalous FOR THIS
+  ACCOUNT. ***This is the hero live-loop vector and the technical heart of the arms race.***
+  If we cut everything else, this one stays.
+- ★ **Intelligent card-testing / BIN probing** (`card_testing`) — micro-authorizations
+  sized and spaced to stay under velocity limits until a live card is found — **live-loop**
+- Decision-boundary probing — using approve/decline responses as an oracle to map where the
+  model's threshold actually sits, then transacting just inside it — ◆ showcase
+- Feedback-loop poisoning — abusing the dispute/chargeback label stream to corrupt the
+  detector's next retrain — ◆ showcase
 
-**Agentic-commerce fraud (our unfair advantage — but it's a SHOWCASE, not the loop)**
+**Coordination & laundering (what GenAI actually makes cheap: scale)**
+- ★ **Mule fan-out** (`mule_fanout`) — one operator, many mule accounts, each individually
+  unremarkable; the signature lives only in the fact that they all fire inside one window.
+  The frozen feature space has no counterparty, so this vector is deliberately built as a
+  **controlled experiment**: its recall measures how much coordination is invisible without
+  a graph layer — **live-loop**
+- Automated mule recruitment funnels — ◆ showcase
+- Synthetic merchants / transaction laundering through fake storefronts — ◆ showcase
+
+**Agentic-commerce fraud (our unfair advantage — but these are SHOWCASE, not the loop)**
 - ◆ **Prompt-injection against AI shopping/payment agents** — redirect a payment or
   exfiltrate card credentials by poisoning the agent's context. Almost nobody will submit
   this; it's literally our agent-safety research domain. It wins novelty points in the
   write-up and a short scripted demo — it does **not** feed the tabular detector, and we
   say so plainly rather than fudging it.
+- Malicious merchant overcharging an autonomous agent — the agent is billed a multiple of
+  the posted price and pays it, because nothing checks — ◆ showcase
+- Agent credential / session exfiltration from a compromised tool or page — ◆ showcase
 
-**Post-fraud**
-- GenAI friendly-fraud / chargeback narratives · automated mule recruitment — ◆ showcase
+**Post-fraud and first-party**
+- GenAI friendly-fraud / chargeback narratives written to order — ◆ showcase
+- GenAI-assisted credit and loan application fraud (fabricated income, employment,
+  supporting documents) — ◆ showcase
+
 
 ### 🇮🇳 The India / UPI edge (strategic)
 GFF is in **Mumbai**, judged on **"real-world feasibility in live payments."** UPI is the
@@ -237,7 +260,7 @@ it doesn't compute them live.
 
 | Criterion | How we win it |
 |---|---|
-| Diversity of attacks | ~15-vector GenAI taxonomy, live-loop vs showcase clearly split, India rails included |
+| Diversity of attacks | 21-vector GenAI taxonomy (5 built and running in the loop, 16 catalogued), live-loop vs showcase clearly split, India rails included |
 | Fidelity of simulation | Real IEEE-CIS base + distribution-match evidence (KS-test) + plausibility-constrained attacks mounted on real accounts |
 | Detection efficacy | LightGBM + gain-based feature importance; F1/AUC/FP reported per iteration on **held-out novel attacks** |
 | Novelty | the **closed adaptive loop** + constrained evasion optimizer + agentic red team + UPI grounding |
