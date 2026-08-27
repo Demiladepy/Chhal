@@ -225,6 +225,65 @@ class MuleFanout(AttackVector):
         }
 
 
+class AutopayMandate(AttackVector):
+    """A fraudulent recurring mandate disguised as a subscription — the vector whose whole
+    signature is REGULARITY, and a controlled probe of a blind spot the others cannot reach.
+
+    Every other vector here moves fast or moves in a burst: `card_testing` probes in
+    seconds, `bustout` empties in an afternoon, `upi_collect` drains in minutes. A detector
+    tuned on real fraud learns that shape, and `velocity_1h`, `velocity_24h` and the
+    inter-transaction gap carry a large part of it. This vector deliberately does the
+    opposite. A GenAI phishing flow — disguised as a KYC re-verification or a delivery
+    reschedule — tricks the victim into approving a recurring auto-debit *mandate* rather
+    than a one-off payment: the live UPI-AutoPay successor to the P2P collect-request that
+    NPCI closed in October 2025. The fraud then draws a modest, near-constant amount on a
+    monthly cadence, from an established-looking payee. No single transaction is unusual and
+    the sequence trips no velocity or burst rule, so it can run for months before a human
+    reconciles it.
+
+    What it measures
+    ----------------
+    Its recall reads whether the detector has a SLOW-FRAUD blind spot. Every behavioural
+    feature that makes the burst vectors catchable — both velocities near zero, a month-long
+    gap — reads here as ordinary, because dormant-then-single-purchase is a completely normal
+    thing for a real card to do. If this vector's recall lands low, steady recurring drain is
+    a genuine gap and "the detector is tuned for spikes" stops being a line in a limitations
+    section and becomes a number. If it lands high, the signal is coming from the linkage
+    block or the amount rather than from anything temporal — worth knowing too, because it
+    would mean the issuer-side context catches even fraud that leaves no temporal trace.
+
+    Like `mule_fanout`, the static columns are held near legitimate base rates on purpose: a
+    constant `is_new_beneficiary` or an all-domestic flag would let the detector catch the
+    vector on that one column and make the temporal measurement worthless.
+    """
+
+    vector_id = "autopay_mandate"
+    storyline = (
+        "A GenAI phishing flow disguised as a KYC re-verification or a delivery reschedule "
+        "tricks the victim into authorising a recurring auto-debit mandate instead of a "
+        "one-time payment. The fraud then draws a modest, near-constant amount on a monthly "
+        "cadence from an established-looking payee -- indistinguishable from a legitimate "
+        "subscription, tripping no velocity or burst rule -- and runs for months."
+    )
+    new_payee_rate = 0.08    # an established-looking subscription: mostly a known payee
+    temporal = TemporalProfile(
+        txns_per_entity=(4, 8),                          # several monthly billing cycles
+        inter_arrival_s=(28 * 86_400.0, 32 * 86_400.0),  # ~monthly, low variance = regular
+        amount_band=(0.40, 0.58),                        # a moderate, consistent charge
+        # amount_trend defaults to 1.0 -- flat, like a fixed subscription price
+    )
+
+    def static_features(self, n, rng):
+        p = self.p
+        return {
+            # mostly a known payee (the mandate looks established), not a constant tell
+            "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
+            "is_cross_border": p.bernoulli(0.03, n, rng),           # a domestic mandate
+            "channel_code": p.categorical("channel_code", n, rng),  # card or UPI AutoPay
+        }
+
+
 # Order is load-bearing: tests and scripts index this list positionally, so new vectors
 # are appended rather than inserted.
-ALL_VECTORS = [ThresholdHugging, SyntheticBustout, CardTesting, UpiCollectScam, MuleFanout]
+ALL_VECTORS = [ThresholdHugging, SyntheticBustout, CardTesting, UpiCollectScam, MuleFanout,
+               AutopayMandate]
