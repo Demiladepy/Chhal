@@ -79,7 +79,7 @@ left, center, right = st.columns([1, 1.1, 1.3])
 
 # ---- LEFT: Red Team --------------------------------------------------------
 with left:
-    st.subheader("🔴 Red Team")
+    st.subheader("Red Team")
     st.caption("Adaptive attack vectors, tuned to evade the current detector.")
     for vid in sorted(sample["vector"].unique()):
         rows = sample[sample["vector"] == vid]
@@ -92,7 +92,7 @@ with left:
 
 # ---- CENTER: Live Stream ---------------------------------------------------
 with center:
-    st.subheader("🟡 Live Stream")
+    st.subheader("Live Stream")
     st.caption("Transactions flowing; the retrained detector flags adaptive fraud.")
     final_iter = int(per_vector["iteration"].max())
     latest = per_vector[per_vector["iteration"] == final_iter]
@@ -112,7 +112,7 @@ with center:
 
 # ---- RIGHT: Blue Team — the money chart ------------------------------------
 with right:
-    st.subheader("🔵 Blue Team — the arms race")
+    st.subheader("Blue Team — the arms race")
     bench = curve[curve["phase"] == "benchmark"]
     pressure = curve[curve["phase"] == "pressure"]
     fig = go.Figure()
@@ -153,7 +153,7 @@ with st.expander("Why this curve is defensible (the judge's question)"):
 
 # ---- Fidelity: a metric, not a claim (judged criterion) --------------------
 st.markdown("---")
-st.subheader("🎯 Fidelity of simulation — measured, not claimed")
+st.subheader("Fidelity of simulation — measured, not claimed")
 fid = summary.get("fidelity", {})
 if fid:
     f1, f2, f3 = st.columns(3)

@@ -167,7 +167,7 @@ implemented and run in the live loop.
   supporting documents) — ◆ showcase
 
 
-### 🇮🇳 The India / UPI edge (strategic)
+### The India / UPI edge (strategic)
 GFF is in **Mumbai**, judged on **"real-world feasibility in live payments."** UPI is the
 dominant rail. Grounding attacks in **UPI collect-requests, fake-merchant QR, and
 IMPS/RTP** — not just US card-present fraud — reads as far more feasible than a generic
