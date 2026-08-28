@@ -50,6 +50,65 @@ MIMICRY_VECTOR = "threshold_hugging"
 # these, which is where mimicry either happened or did not.
 CONTROLLED_FEATURES: List[str] = list(dict.fromkeys(ATTACKER_DIRECT + DERIVED_FEATURES))
 
+# The KS a feature scores when BOTH samples are legitimate traffic — the noise floor.
+#
+# `matches_legit` used to be `stat < 0.1`, a constant, and the constant is wrong in a way
+# that is easy to miss: two samples drawn from the SAME legit population do not score
+# zero. Measured legit-vs-legit at n=m=500 (scripts/audit/ks_null_floor.py) the floor
+# spans nearly twenty-fold across the feature space, from `is_cross_border` at 0.0022 to
+# `amount_to_avg_ratio` at 0.0411, mean ~0.024. So `< 0.1` meant "within 2.4x of pure
+# noise" on one row of the table and "within 45x" on another, in the same table, and the
+# rows were being read as if they said the same thing.
+#
+# Report multiples of the floor instead. This is also the metric Sajja, arXiv 2604.13125
+# (13 Apr 2026), "Synthetic Tabular Generators Fail to Preserve Behavioral Fraud
+# Patterns", publishes on IEEE-CIS — degradation over the noise floor — four months
+# before this repo. Matching it is what makes our fidelity numbers comparable to theirs
+# rather than merely adjacent.
+KS_NULL_FLOOR_N = 500              # the n at which the floors below were measured
+KS_NULL_FLOOR = {
+    "amount_to_avg_ratio": 0.0411,
+    "amount": 0.0374,
+    "time_since_last_txn_min": 0.0318,
+    "hour": 0.0297,
+    "day_of_week": 0.0277,
+    "is_new_beneficiary": 0.0198,
+    "channel_code": 0.0162,
+    "velocity_1h": 0.0159,
+    "velocity_24h": 0.0153,
+    "is_cross_border": 0.0022,
+}
+# For the sixteen inherited columns (linkage counts, account age, merchant risk) the
+# floor was not measured per column; the n=500 mean is the honest stand-in, and those
+# columns match legit by construction anyway.
+KS_NULL_FLOOR_DEFAULT = 0.024
+# "Matches legit" now means "within this many multiples of that feature's own noise
+# floor" rather than "under a fixed 0.1".
+#
+# Why 2.0 and not 1.0: the floors above are MEAN null KS values, so a single legit-vs-legit
+# comparison lands above its own floor roughly half the time by construction. At 2x the
+# rule reads "within twice the expected noise", and measured on two 500-row legit draws it
+# passes 22 of 26 features at a mean ratio of 1.44 — against 13.51 for real IEEE-CIS fraud
+# over the same features. The remaining four are single-draw fluctuation, not a defect, and
+# the ratio column is there precisely so a reader can see that rather than trust the flag.
+LEGIT_RATIO = 2.0
+
+
+def ks_null_floor(feature: str, n: int, m: int) -> float:
+    """The legit-vs-legit KS for `feature` at sample sizes n and m.
+
+    The floor is not a constant across sample size either — it fell from ~0.024 at
+    n=m=500 to ~0.008 at n=5,100 in the same measurement. So the measured value is
+    rescaled by the two-sample KS null's own dependence on sample size,
+    sqrt((n+m)/nm), instead of being applied flat. A 500-row attack batch and a
+    5,100-row one are then judged against their own floors rather than each other's.
+    """
+    base = KS_NULL_FLOOR.get(feature, KS_NULL_FLOOR_DEFAULT)
+    if n <= 0 or m <= 0:
+        return base
+    reference_scale = np.sqrt(2.0 / KS_NULL_FLOOR_N)          # n = m = KS_NULL_FLOOR_N
+    return float(base * np.sqrt((n + m) / (n * m)) / reference_scale)
+
 
 def ks_table(reference: pd.DataFrame, sample: pd.DataFrame,
              features: List[str] | None = None) -> pd.DataFrame:
@@ -57,13 +116,23 @@ def ks_table(reference: pd.DataFrame, sample: pd.DataFrame,
 
     KS in [0, 1]; lower = closer distributions. p > 0.05 means we cannot reject
     "same distribution" for that feature.
+
+    `ks_stat` is the raw distance and is what it always was. `degradation_ratio` is that
+    distance in multiples of the feature's own legit-vs-legit noise floor, which is the
+    only one of the two that is comparable ACROSS features — see KS_NULL_FLOOR. A ratio
+    near 1.0 means the sample is as close to legit as legit is to itself.
     """
     features = features or FEATURE_COLUMNS
     rows = []
     for col in features:
-        stat, p = ks_2samp(reference[col].to_numpy(), sample[col].to_numpy())
+        ref, smp = reference[col].to_numpy(), sample[col].to_numpy()
+        stat, p = ks_2samp(ref, smp)
+        floor = ks_null_floor(col, len(smp), len(ref))
         rows.append({"feature": col, "ks_stat": float(stat), "p_value": float(p),
-                     "matches_legit": stat < 0.1})
+                     "ks_null_floor": round(floor, 4),
+                     "degradation_ratio": round(float(stat) / floor, 2) if floor > 0
+                                          else float("inf"),
+                     "matches_legit": bool(float(stat) <= LEGIT_RATIO * floor)})
     return pd.DataFrame(rows).sort_values("ks_stat", ascending=False).reset_index(drop=True)
 
 
@@ -141,6 +210,12 @@ def ks_by_vector(legit: pd.DataFrame, attacks: pd.DataFrame,
             # the same distance restricted to what the red team controls — see
             # CONTROLLED_FEATURES for why the two differ by so much
             "mean_ks_controlled": round(float(controlled["ks_stat"].mean()), 4),
+            # the same two distances in multiples of the noise floor. Quote these when
+            # comparing vectors to each other or to a published number; quote the raw
+            # KS only when comparing a vector to itself across runs.
+            "mean_degradation_ratio": round(float(ks["degradation_ratio"].mean()), 2),
+            "mean_degradation_ratio_controlled": round(
+                float(controlled["degradation_ratio"].mean()), 2),
             "features_like_legit": int(ks["matches_legit"].sum()),
             "controlled_like_legit": int(controlled["matches_legit"].sum()),
             "n_controlled": int(len(controlled)),

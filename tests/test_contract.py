@@ -185,6 +185,9 @@ def test_loop_runs_and_produces_a_curve():
         f"{ks.to_dict()}")
     assert set(result.fidelity_per_vector.columns) == {
         "vector", "mean_ks_vs_legit", "mean_ks_controlled",
+        # the same two distances in multiples of the legit-vs-legit noise floor, which
+        # is the only form that is comparable across features — see fidelity.KS_NULL_FLOOR
+        "mean_degradation_ratio", "mean_degradation_ratio_controlled",
         "features_like_legit", "controlled_like_legit", "n_controlled"}
     # the restricted distance must be the LARGER one — if it is not, the inherited
     # columns are not matching by construction and something upstream is wrong

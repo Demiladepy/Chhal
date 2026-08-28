@@ -219,6 +219,13 @@ class ScoreReport:
     # (100 / 500 / 2000 attacks per vector took it 0.0016 -> 0.0080 -> 0.0319 with the
     # detector unchanged). This one is measured on the real test set alone.
     alert_rate_on_real_traffic: float = 0.0
+    # Recall on the REAL labelled fraud in the test set, at the same PRIMARY_FPR
+    # threshold the attack recall is quoted at. This is the control the arms-race curve
+    # was missing: the generated attacks climb across rounds, and this says whether the
+    # detector got better at fraud or only at our generator. It does not depend on what
+    # the vectors were trying to do, which is what makes it the number that survives the
+    # hardest objection to the whole benchmark. NaN when no real fraud was supplied.
+    real_fraud_recall_at_fpr: float = float("nan")
     per_vector_recall: Dict[str, float] = field(default_factory=dict)
     per_vector_recall_at_fpr: Dict[str, float] = field(default_factory=dict)
     top_features: List[str] = field(default_factory=list)  # LightGBM gain ranking, not SHAP
@@ -231,6 +238,7 @@ class ScoreReport:
             "pr_auc": self.pr_auc,
             "alert_rate": self.alert_rate,
             "alert_rate_on_real_traffic": self.alert_rate_on_real_traffic,
+            "real_fraud_recall_at_fpr": self.real_fraud_recall_at_fpr,
             # threshold-0.5 numbers, retained for comparison only
             "precision": self.precision,
             "recall": self.recall,

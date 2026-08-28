@@ -126,6 +126,14 @@ with right:
     fig.add_trace(go.Scatter(
         x=pressure["iteration"], y=pressure[METRIC], name="red pressure (newest evasion)",
         mode="lines+markers", line=dict(color="#e67e22", dash="dot")))
+    # The control. Same detector, same threshold, IEEE-CIS's own labelled fraud. Without
+    # it the blue line is unfalsifiable: a detector that learned only our generator draws
+    # exactly the same climb as one that learned fraud.
+    if "real_fraud_recall_at_fpr" in bench.columns:
+        fig.add_trace(go.Scatter(
+            x=bench["iteration"], y=bench["real_fraud_recall_at_fpr"],
+            name="real IEEE-CIS fraud (control)", mode="lines+markers",
+            line=dict(color="#7f8c8d", dash="dash")))
     fig.update_layout(
         title="Recall on held-out attacks, at 0.1% of real customers flagged",
         xaxis_title="iteration", yaxis_title="recall @ 0.1% FPR",
@@ -136,7 +144,10 @@ with right:
                "— they're tuned to look normal). One loop pass and blue holds the fixed "
                "benchmark near the top. The dotted line is red's ongoing pressure: each "
                "iteration it finds a fresh evasion the just-retrained model partly misses. "
-               "That gap is the honest, unfinished arms race.")
+               "That gap is the honest, unfinished arms race. The grey dashed line is the "
+               "control: real IEEE-CIS fraud at the same threshold. It barely moves. The "
+               "loop is teaching the detector our generator far faster than it is "
+               "teaching it fraud, and that gap is the point of the benchmark.")
 
 with st.expander("Why this curve is defensible (the judge's question)"):
     st.markdown(

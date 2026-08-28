@@ -65,6 +65,14 @@ def main() -> None:
                 "final": round(float(bench[c].iloc[-1]), 4),
             } for c in op_cols
         },
+        # The control, and the number to read the operating points against. If the
+        # attack recall climbs while this stays flat, the loop taught the detector our
+        # generator rather than fraud — which is a finding, not a bug, and it has to be
+        # visible in the same file as the headline.
+        "real_fraud_recall_at_fpr_0.001": {
+            "baseline": round(float(bench["real_fraud_recall_at_fpr"].iloc[0]), 4),
+            "final": round(float(bench["real_fraud_recall_at_fpr"].iloc[-1]), 4),
+        },
         "baseline_pr_auc": round(float(bench["pr_auc"].iloc[0]), 4),
         "final_pr_auc": round(float(bench["pr_auc"].iloc[-1]), 4),
         "final_alert_rate": round(float(bench["alert_rate"].iloc[-1]), 5),

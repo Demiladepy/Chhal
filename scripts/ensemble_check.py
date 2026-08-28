@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN            # noqa: E402
 from chhal.data import load_base_data                               # noqa: E402
 from chhal.detector import Detector                                 # noqa: E402
+from chhal.evaluation import threshold_for_fpr                      # noqa: E402
 from chhal.ensemble import AnomalyArm, Ensemble, StackedDetector    # noqa: E402
 from chhal.optimizer import EvasionOptimizer                        # noqa: E402
 from chhal.redteam import ALL_VECTORS                               # noqa: E402
@@ -45,7 +46,17 @@ VARIANTS = ("supervised", "max_fusion", "stacked")
 
 
 def recall_at(scores_legit, scores_pos, fpr=FPR):
-    thr = np.quantile(scores_legit, 1 - fpr)
+    """Recall at a false-positive budget that is honoured, not just requested.
+
+    This used to be `np.quantile(scores_legit, 1 - fpr)`. A gradient-boosted ensemble
+    emits large blocks of identical scores, the quantile routinely lands inside one, and
+    a `>=` rule then sweeps the whole block in — so the realised FPR can be many times
+    the budget the number is reported at. `threshold_for_fpr` walks the distinct scores
+    and takes the lowest one whose realised rate actually fits. Every other script in
+    the repo already goes through it; this one was the last holdout, and its numbers
+    were therefore not comparable with theirs.
+    """
+    thr = threshold_for_fpr(scores_legit, fpr)
     return float((scores_pos >= thr).mean()), thr
 
 
@@ -93,7 +104,7 @@ def main() -> None:
 
         # of the unseen attacks max-fusion catches, how many did the anomaly arm carry?
         sup_p, anom_p = ens.arm_percentiles(unseen)
-        thr = np.quantile(ens.score(eval_legit), 1 - FPR)
+        thr = threshold_for_fpr(ens.score(eval_legit), FPR)
         caught = ens.score(unseen) >= thr
         carried.append(float((anom_p[caught] > sup_p[caught]).mean()) if caught.any() else 0.0)
 

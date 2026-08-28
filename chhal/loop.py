@@ -2,6 +2,13 @@
 
 We measure the two things that tell the true story, and keep them separate:
 
+The curve also carries `real_fraud_recall_at_fpr` on every row: the detector's recall
+on IEEE-CIS's OWN labelled fraud, at the same threshold, computed from the
+`real_traffic=base.test` already passed to every `evaluate` call here. It is the
+control. The attack recall climbing across rounds is compatible with a detector that
+learned our generator and nothing about fraud; read against a flat real-fraud line,
+that is exactly what it says.
+
 All recalls on the curve are measured at a FIXED false-positive budget (0.1% of real
 legitimate traffic), not at a 0.5 threshold — see evaluation.py for why.
 

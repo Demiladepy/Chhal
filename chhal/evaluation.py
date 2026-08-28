@@ -33,8 +33,8 @@ import pandas as pd
 from sklearn.metrics import (average_precision_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 
-from .contract import (FEATURE_COLUMNS, OPERATING_POINTS, PRIMARY_FPR, AttackBatch,
-                       ScoreReport)
+from .contract import (FEATURE_COLUMNS, LABEL_COLUMN, OPERATING_POINTS, PRIMARY_FPR,
+                       AttackBatch, ScoreReport)
 from .detector import Detector
 
 DECISION_THRESHOLD = 0.5   # the naive cutoff, kept only as a comparison baseline
@@ -147,9 +147,16 @@ def evaluate(
     """Score the detector on legit (label 0) + attack (label 1) rows.
 
     `real_traffic`, when given, is the untouched real test set — legitimate rows AND
-    real fraud, no generated attacks. It is used for one number only, the alert rate an
-    ops team would actually see, because the alert rate over the scored mixture is a
-    function of how many attacks the run generated and is not an operational figure.
+    real fraud, no generated attacks. Two numbers come off it, and neither can be got
+    from the scored mixture:
+
+      * the alert rate an ops team would actually see, because the alert rate over the
+        mixture is a function of how many attacks the run generated and moves with a
+        config knob rather than with the detector;
+      * recall on the REAL fraud in that set, at the same threshold. The curve tracked
+        the generated attacks and nothing else, so a detector that learned our generator
+        and learned nothing about fraud produced exactly the same picture as one that
+        learned both. This separates them.
     """
     X = pd.concat([legit[FEATURE_COLUMNS], attacks[FEATURE_COLUMNS]], ignore_index=True)
     y = np.concatenate([np.zeros(len(legit)), np.ones(len(attacks))])
@@ -163,8 +170,14 @@ def evaluate(
             legit_proba, attack_proba, fpr)
     primary_thr = thr_at.get(PRIMARY_FPR, threshold_for_fpr(legit_proba, PRIMARY_FPR))
     alert_rate = float((proba >= primary_thr).mean())
-    alert_real = (float((detector.score(real_traffic[FEATURE_COLUMNS]) >= primary_thr).mean())
-                  if real_traffic is not None and len(real_traffic) else 0.0)
+    alert_real, real_fraud_recall = 0.0, float("nan")
+    if real_traffic is not None and len(real_traffic):
+        real_proba = detector.score(real_traffic[FEATURE_COLUMNS])
+        alert_real = float((real_proba >= primary_thr).mean())
+        if LABEL_COLUMN in real_traffic.columns:
+            real_y = real_traffic[LABEL_COLUMN].to_numpy()
+            if real_y.sum():
+                real_fraud_recall = float((real_proba[real_y == 1] >= primary_thr).mean())
     pr_auc = float(average_precision_score(y, proba)) if len(np.unique(y)) > 1 else 0.0
 
     per_vector_at_fpr: Dict[str, float] = {}
@@ -195,6 +208,7 @@ def evaluate(
         realised_fpr_at_fpr=realised_at,
         alert_rate=alert_rate,
         alert_rate_on_real_traffic=alert_real,
+        real_fraud_recall_at_fpr=real_fraud_recall,
         per_vector_recall=per_vector,
         per_vector_recall_at_fpr=per_vector_at_fpr,
         top_features=detector.top_gain_features(),
