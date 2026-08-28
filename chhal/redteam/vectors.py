@@ -132,14 +132,36 @@ class CardTesting(AttackVector):
 
 
 class UpiCollectScam(AttackVector):
-    """India rail: a fraudulent UPI collect-request followed by rapid drain."""
+    """India rail: a fraudulent UPI collect-request followed by rapid drain.
+
+    Scoped to MERCHANT collect, deliberately. NPCI circular
+    `NPCI/UPI/OC/220/2025-26` (29 July 2025) discontinued Person-to-Person collect
+    entirely: no P2P collect transaction may be "initiated, routed, or processed" on
+    UPI from 1 October 2025. Modelling P2P collect would mean modelling a rail that no
+    longer exists.
+
+    Two facts make merchant collect the right target rather than a fallback. First, it
+    is what survived — collect requests from merchants still run, and they are the
+    higher-limit variant. Second, the P2P rail could never have carried this attack
+    anyway: a circular of 31 October 2019 capped P2P collect at Rs 2,000 per
+    transaction with 50 successful transactions a day, while this vector's
+    `amount_band` of (0.75, 0.96) is roughly $117-$505 of legitimate test traffic --
+    5x to 21x over that cap on every single hop. So the P2P framing was wrong on
+    amount from the day it was written, independently of the 2025 withdrawal.
+
+    The mechanic the attacker actually uses is impersonation of a verified merchant:
+    the victim is walked into approving what looks like a checkout collect request.
+    Nothing about the generated rows changes -- this is a scoping and storyline fix,
+    so every committed number for `upi_collect` remains valid.
+    """
 
     new_payee_rate = 0.85    # fresh VPAs per hop, though not perfectly fresh
     vector_id = "upi_collect"
     storyline = (
-        "A GenAI social-engineering script tricks a victim into approving a UPI "
-        "collect-request; the funds are then drained through a chain of fresh VPAs "
-        "within minutes."
+        "A GenAI social-engineering script impersonates a verified merchant's checkout "
+        "and walks a victim into approving a merchant collect-request -- the higher-limit "
+        "variant that survived NPCI's October 2025 withdrawal of P2P collect. The funds "
+        "are then drained through a chain of fresh VPAs within minutes."
     )
     temporal = TemporalProfile(
         txns_per_entity=(3, 7),                    # a short chain of fresh VPAs
@@ -237,9 +259,9 @@ class AutopayMandate(AttackVector):
     reschedule — tricks the victim into approving a recurring auto-debit *mandate* rather
     than a one-off payment: the live UPI-AutoPay successor to the P2P collect-request that
     NPCI closed in October 2025. The fraud then draws a modest, near-constant amount on a
-    monthly cadence, from an established-looking payee. No single transaction is unusual and
-    the sequence trips no velocity or burst rule, so it can run for months before a human
-    reconciles it.
+    weekly cadence, from an established-looking payee. No single transaction is unusual and
+    the sequence trips no velocity or burst rule, so it can run unnoticed until a human
+    reconciles the statement.
 
     What it measures
     ----------------
@@ -254,21 +276,45 @@ class AutopayMandate(AttackVector):
 
     Like `mule_fanout`, the static columns are held near legitimate base rates on purpose: a
     constant `is_new_beneficiary` or an all-domestic flag would let the detector catch the
-    vector on that one column and make the temporal measurement worthless.
+    vector on that one column and make the temporal measurement worthless. They are set to
+    the measured TEST-split legitimate rates, because hosts are drawn from `base.test`
+    (`loop.py`): `is_new_beneficiary` 0.3262 and `is_cross_border` 0.0036.
+
+    What this vector does NOT encode
+    --------------------------------
+    A mandate. `channel_code` has three values -- 0 card, 1 upi, 2 imps/rtp -- and none of
+    them means auto-debit, so the frozen feature space cannot distinguish a standing
+    instruction from an ordinary payment on the same rail. The mandate is the storyline;
+    what is measured is a slow, flat, regular campaign. Stating it the other way round
+    would claim a signal the detector cannot see. Adding an auto-debit `channel_code` value
+    is a deliberate contract bump and belongs with the agent-attested-channel work.
+
+    Why the cadence is WEEKLY, not monthly
+    --------------------------------------
+    The constraint is the data. The test split spans 52.8 days; 4-8 transactions at a
+    monthly gap would span 84-224 days, so every campaign would overrun the evaluation
+    window by 1.6x to 4.2x. That is not a leak -- no absolute timestamp is in
+    `FEATURE_COLUMNS`, `hour` and `day_of_week` are cyclic and the rest are relative -- but
+    `account_age_days` IS in the contract, and `behaviour.py` grows it by time elapsed
+    since the host's last real transaction. The tail of a long campaign would then drift
+    far above the legitimate median of 16 days and hand the detector a DURATION signature
+    instead of the cadence signature this vector exists to test. A weekly mandate is
+    attested in the same source as the monthly one ("a recurring daily, weekly or monthly
+    debit") and still holds both velocity columns at zero.
     """
 
     vector_id = "autopay_mandate"
     storyline = (
         "A GenAI phishing flow disguised as a KYC re-verification or a delivery reschedule "
         "tricks the victim into authorising a recurring auto-debit mandate instead of a "
-        "one-time payment. The fraud then draws a modest, near-constant amount on a monthly "
+        "one-time payment. The fraud then draws a modest, near-constant amount on a weekly "
         "cadence from an established-looking payee -- indistinguishable from a legitimate "
-        "subscription, tripping no velocity or burst rule -- and runs for months."
+        "subscription, tripping no velocity or burst rule -- and runs unnoticed."
     )
-    new_payee_rate = 0.08    # an established-looking subscription: mostly a known payee
+    new_payee_rate = 0.3262  # the measured legit test-split rate, not a low constant
     temporal = TemporalProfile(
-        txns_per_entity=(4, 8),                          # several monthly billing cycles
-        inter_arrival_s=(28 * 86_400.0, 32 * 86_400.0),  # ~monthly, low variance = regular
+        txns_per_entity=(4, 7),                            # several billing cycles
+        inter_arrival_s=(6.5 * 86_400.0, 7.5 * 86_400.0),  # ~weekly, low variance = regular
         amount_band=(0.40, 0.58),                        # a moderate, consistent charge
         # amount_trend defaults to 1.0 -- flat, like a fixed subscription price
     )
@@ -278,8 +324,8 @@ class AutopayMandate(AttackVector):
         return {
             # mostly a known payee (the mandate looks established), not a constant tell
             "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
-            "is_cross_border": p.bernoulli(0.03, n, rng),           # a domestic mandate
-            "channel_code": p.categorical("channel_code", n, rng),  # card or UPI AutoPay
+            "is_cross_border": p.bernoulli(0.0036, n, rng),         # the legit test-split rate
+            "channel_code": p.categorical("channel_code", n, rng),  # sampled; see docstring
         }
 
 
