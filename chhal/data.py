@@ -112,7 +112,11 @@ def _load_ieee(path: str, seed: int, max_rows: int | None) -> BaseData:
     # not evidence. A truncated or hand-made parquet used to load silently and every
     # result downstream would then be reported as `source=ieee`. Check the shape the
     # real thing actually has before agreeing to call it that.
-    n = len(train) + len(test)
+    # Count the FILE, not train+test. The parquet also carries `embargo` and
+    # `straddle` rows -- the delay period and the purged straddling accounts -- which
+    # belong to neither split by design. Summing the two splits would read that
+    # deliberate holdout as a truncated file and refuse to load it.
+    n = len(df)
     if n < MIN_IEEE_ROWS:
         raise SystemExit(
             f"{path} holds {n:,} rows; real IEEE-CIS has {IEEE_TOTAL_ROWS:,}. "

@@ -52,6 +52,15 @@ TEMPORAL, not random: the first 75% of the 182-day window trains, the last 25% t
 Random splits leak future fraud patterns into the past and inflate every number. The
 manifold quantiles used by the evasion optimizer are computed on TRAIN ONLY.
 
+Two further guards sit on top of the temporal cut, and both were added because the cut
+alone measurably was not enough. A 7-day DELAY PERIOD separates the splits -- the gap
+used to be sixty seconds, so the detector was being credited with catching attacks it
+had effectively already been told about. And test rows on accounts that also appear in
+train are PURGED: 42.2% of the test split sat on entities the model had memorised, and
+every behavioural feature here is computed within an entity. Both sets of rows keep a
+`split` label of their own (`embargo`, `straddle`) rather than being deleted, so the
+count is auditable from the parquet and the leakage delta stays reportable.
+
 Usage
 -----
     python scripts/prepare_ieee.py
@@ -85,6 +94,7 @@ DOMESTIC_ADDR2 = 87.0     # 88.1% of rows; everything else is cross-border
 TE_SMOOTHING = 50.0       # Bayesian prior weight for merchant-risk target encoding
 TE_FOLDS = 5
 TEST_FRAC = 0.25
+EMBARGO_DAYS = 7          # delay period between the splits — see the split block below
 
 RAW_COLUMNS = [
     "TransactionID", "isFraud", "TransactionDT", "TransactionAmt", "ProductCD",
@@ -210,9 +220,14 @@ def build(raw_dir: str, out_path: str, seed: int = 7, force: bool = False) -> pd
         except Exception as e:                        # corrupt/partial file -> rebuild
             print(f"[reuse ] {out_path} unreadable ({e}); rebuilding")
         else:
+            # The `embargo` / `straddle` labels are the marker of a post-fix build.
+            # Without this clause a parquet derived before the delay period and the
+            # entity purge existed would load silently, and every number downstream
+            # would carry the leak while the code looked correct.
             ok = (len(existing) == EXPECTED_ROWS
                   and set(FEATURE_COLUMNS) <= set(existing.columns)
-                  and "split" in existing.columns)
+                  and "split" in existing.columns
+                  and {"embargo", "straddle"} <= set(existing["split"].unique()))
             if ok:
                 print(f"[reuse ] {out_path} already holds {len(existing):,} prepared rows. "
                       f"Nothing to do (pass --force to rebuild).")
@@ -243,10 +258,44 @@ def build(raw_dir: str, out_path: str, seed: int = 7, force: bool = False) -> pd
 
     out[LABEL_COLUMN] = raw.isFraud.astype(np.int64)
 
-    # TEMPORAL split — train on the past, test on the future.
+    # TEMPORAL split — train on the past, test on the future, with a gap between them.
+    #
+    # There used to be no gap at all. Measured on the previous build: train `_ts` max
+    # 11,246,605, test min 11,246,665 — SIXTY SECONDS apart. Every headline number was
+    # therefore the recall of a detector that learns each attack one minute after it
+    # happens, which is not a thing any issuer can do: a card fraud label arrives when
+    # the cardholder disputes the charge, days later. The Fraud Detection Handbook calls
+    # the gap the delay period; rows inside it are dropped from BOTH sides rather than
+    # handed to either, because they are exactly the rows whose labels would not be
+    # known yet at the moment the test period begins.
     cut_dt = raw.TransactionDT.quantile(1 - TEST_FRAC)
+    embargo_end = cut_dt + EMBARGO_DAYS * 86_400
     is_train = (raw.TransactionDT <= cut_dt).to_numpy()
-    out["split"] = np.where(is_train, "train", "test")
+    is_test = (raw.TransactionDT > embargo_end).to_numpy()
+    split = np.where(is_train, "train", np.where(is_test, "test", "embargo"))
+
+    # ENTITY LEAKAGE — accounts that sit on both sides of the cut.
+    #
+    # Measured on the previous build: 23,688 accounts appeared in train AND test, which
+    # is 62,245 of 147,635 test rows — 42.2% of the test split sat on accounts the
+    # detector had already trained on. A temporal split alone does not prevent this,
+    # because an account that transacts across the cut lands in both halves.
+    #
+    # It matters more here than it would elsewhere. Every behavioural feature is computed
+    # WITHIN a uid over real time, `account_age_days` and `merchant_risk` are properties
+    # of the entity, and the fourteen linkage counts are the dataset's own per-entity
+    # aggregates. A test row on a straddling account is not an unseen customer; it is a
+    # customer the model has memorised, scored a little later. Those rows are moved out
+    # of test.
+    #
+    # Report both the purged and unpurged numbers. The delta between them IS the leakage
+    # measurement, so this is a result to publish, not only a fix to make quietly.
+    train_accounts = pd.unique(beh["_uid"].to_numpy()[is_train])
+    straddles = is_test & beh["_uid"].isin(train_accounts).to_numpy()
+    n_straddle_accounts = int(pd.unique(beh["_uid"].to_numpy()[straddles]).size)
+    n_test_pre_purge = int(is_test.sum())
+    split = np.where(straddles, "straddle", split)
+    out["split"] = split
 
     out["merchant_risk"] = _merchant_risk(
         pd.concat([raw[["ProductCD", "R_emaildomain"]], out[[LABEL_COLUMN]]], axis=1),
@@ -272,9 +321,16 @@ def build(raw_dir: str, out_path: str, seed: int = 7, force: bool = False) -> pd
     out.to_parquet(out_path, index=False)
 
     tr, te = out[out["split"] == "train"], out[out["split"] == "test"]
+    n_embargo = int((out["split"] == "embargo").sum())
+    n_straddle = int((out["split"] == "straddle").sum())
     print(f"[split ] temporal cut at TransactionDT={int(cut_dt):,}  "
           f"train={len(tr):,} ({tr[LABEL_COLUMN].mean()*100:.3f}% fraud)  "
           f"test={len(te):,} ({te[LABEL_COLUMN].mean()*100:.3f}% fraud)")
+    print(f"[delay ] {EMBARGO_DAYS}-day delay period holds out {n_embargo:,} rows "
+          f"between the splits (the gap used to be 60 seconds)")
+    print(f"[leak  ] {n_straddle:,} of {n_test_pre_purge:,} post-embargo test rows "
+          f"({100*n_straddle/max(n_test_pre_purge, 1):.1f}%) sat on "
+          f"{n_straddle_accounts:,} accounts the detector also trains on — purged")
     n_acct = out[ACCOUNT_COLUMN].nunique()
     clean = out.groupby(ACCOUNT_COLUMN)[LABEL_COLUMN].max()
     print(f"[hosts ] {n_acct:,} accounts, {int((clean == 0).sum()):,} of them never "
