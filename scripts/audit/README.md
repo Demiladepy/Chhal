@@ -64,11 +64,16 @@ worth keeping write a single CSV to `results/` and are marked below.
                                      first and held: both sit at the floor as generated.
                                      Finds that only 7.5% of campaigns have a victim with
                                      enough history to replay at all, so it also runs on
-                                     a pool gated to hosts that can. There the copy is
-                                     the more faithful sequence (gap CV 0.70 vs 0.38
-                                     against an ideal 1.00) and buys no evasion: paired
-                                     difference under the experiment-E transplant is
-                                     -0.07% +- 0.12%. A null, and a well-powered one.
+                                     a pool gated to hosts that can. Scores realism
+                                     against a MEASURED ceiling -- real uncopied blocks of
+                                     the same victims -- because a 3-9 transaction slice
+                                     cannot reach a whole history's dispersion and an
+                                     ideal of 1.00 would mark a perfect copy as two-thirds
+                                     of the way there. Against 0.67 the copy scores 0.66
+                                     and resampling 0.36, and it buys no evasion: the
+                                     paired experiment-E difference is -0.01%, 95% CI
+                                     +-0.40% over 12 seeds (Student's t, not 1.96).
+                                     A null, and a well-powered one.
                                      -> results/trajectory_replay_detection.csv,
                                         results/trajectory_replay_sequence.csv
 

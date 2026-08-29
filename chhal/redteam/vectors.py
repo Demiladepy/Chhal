@@ -428,9 +428,12 @@ class TrajectoryReplay(ThresholdHugging):
     than that this vector is good.
 
     What it can still show is whether the sequence is genuinely more realistic — measured
-    on statistics the marginals do not constrain — and whether that realism buys anything
-    once the inherited block is transplanted away and the controlled block is the only
-    thing left to see. `scripts/audit/trajectory_replay_probe.py` runs both.
+    on statistics the marginals do not constrain, and scored against the ceiling a real
+    uncopied block of the same length reaches rather than against the victim's whole
+    history, which a three-to-nine transaction slice cannot reach even when it is
+    genuine — and whether that realism buys anything once the inherited block is
+    transplanted away and the controlled block is the only thing left to see.
+    `scripts/audit/trajectory_replay_probe.py` runs both.
     """
 
     vector_id = "trajectory_replay"

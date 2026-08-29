@@ -1171,8 +1171,12 @@ own gap sequence with per-gap jitter, its own amount sequence under one shared s
 factor, phase-aligned to the weekday and hour the block originally ran at. The attacker
 needs read access to the statement, which is exactly what an account takeover provides —
 not a stronger assumption than `threshold_hugging` makes, just a better use of the same
-one. It is `ThresholdHugging` with one flag changed and nothing else, so the comparison
-below is controlled rather than two vectors that happen to differ.
+one. It is `ThresholdHugging` with one flag changed and nothing else, down to the takeover
+wait: aligning a start to a weekday can only move it in whole weeks, and taking the first
+matching instant would have made replayed campaigns sit a systematic four days further
+from their victim's last real transaction — a difference in `time_since_last_txn_min`,
+which is one of the ten columns the comparison is about. It picks uniformly among the
+matching instants inside the same window instead.
 
 **The prediction was written down first, and it held.** [Why every attack scores
 zero](#why-every-attack-scores-zero) established that the ten columns the red team
@@ -1180,65 +1184,87 @@ controls carry no usable signal here at all: replace every one of them with valu
 from real fraud and recall stays at 0.00%. A better sequence model improves exactly those
 ten columns. So it cannot move the headline, and a headline that moved would have meant
 the earlier result was wrong rather than that this vector was good. It is shipped as a
-probe for that reason, and is **not** in `ALL_VECTORS`.
+probe for that reason, and is **not** in `ALL_VECTORS` — a test enforces that, because a
+shipped vector on the replay path would consume the generator differently and move every
+number in this README.
 
 **The first result has nothing to do with detection: most victims cannot be replayed at
-all.** A block of *k* attack transactions has to be cut from *k+2* real ones, and
-IEEE-CIS accounts are short — the eligible test hosts have a median of **two**
-transactions each. On the pool the loop actually uses, only **7.5%** of campaigns have a
-victim with enough history to cut a block from; the rest fall back to mimicry. That is not
-an implementation limit. It is the same limit a real attacker faces, because you cannot
-replay a statement with three lines on it, and it caps what any sequence-level attack can
-do on this population before a detector is involved. It also means a comparison run on
-that pool is mostly mimicry against mimicry, so both vectors are additionally run on a
-pool gated to hosts long enough that **every** campaign replays. Same victims for both;
-the price is that those hosts are a small, unrepresentative slice of the data.
+all.** A block of *k* attack transactions is cut from *k+2* real ones — *k* that are
+replayed, one whose gap is read and discarded, and one held back so the victim's last real
+transaction is never copied — and IEEE-CIS accounts are short: the eligible test hosts have
+a median of **two** transactions each. On the pool the loop actually uses, only **7.5%** of
+campaigns have a victim long enough; the rest fall back to mimicry. Dropping the held-back
+transaction, the loosest bound the arithmetic allows, moves that to 8.9%, so the shortage
+is the population and not the margin. That is not an implementation limit either. It is the
+same limit a real attacker faces, because you cannot replay a statement with three lines on
+it, and it caps what any sequence-level attack can do here before a detector is involved.
+It also means a comparison run on that pool is mostly mimicry against mimicry, so both
+vectors are additionally run on a pool gated to hosts long enough that **every** campaign
+replays. Same victims for both; the price is that those hosts are a small, unrepresentative
+slice of the data.
 
-On that gated pool the replay is measurably the more faithful sequence, on three
-statistics the marginals do not constrain:
+On that gated pool the replay is measurably the more faithful sequence — and the row to
+read it against is the first one, not a column of round numbers:
 
-| | ideal | `threshold_hugging` | `trajectory_replay` |
+| gated pool, 12 seeds | a real block of the victim's own past | `threshold_hugging` | `trajectory_replay` |
 |---|---|---|---|
-| gap CV, relative to the victim's own | 1.00 | 0.38 | **0.70** |
-| lag-1 autocorrelation of log amount, minus the victim's | 0.00 | −0.30 | **−0.13** |
-| campaigns going above the victim's own peak `amount_to_avg_ratio` | — | 5.5% | 31.7% |
+| gap CV, relative to the victim's own | 0.67 | 0.36 | **0.66** |
+| lag-1 autocorrelation of log amount, minus the victim's | −0.14 | −0.27 | **−0.14** |
+| transactions after the first on an hour the victim uses | 70.7% | 59.7% | **66.3%** |
+| campaigns going above the victim's own peak `amount_to_avg_ratio` | — | 6.2% | 31.8% |
 
-The first two are the claim, and the copy roughly halves both errors: mimicry's cadence is
-unnaturally even because `_host_gaps` draws every gap from the victim's 25th–75th
-percentile band, while real cards go quiet for a week and then spend three times in an
-evening. The third row is **not** a joint-structure statistic and is not scored as one —
-it is a marginal property that mimicry wins by construction, and what it measures for the
-replay is `REPLAY_SCALE`. The block is the victim's own shape multiplied by up to 1.3, so
-a block containing their largest transaction clears their record. That trade is worth
-naming rather than hiding: a replay at scale 1.0 is perfectly faithful and steals exactly
-what the victim would have spent anyway.
+**The first column is a ceiling, not an ideal, and it is measured rather than assumed.**
+The obvious yardstick — gap CV ratio 1.00, autocorrelation gap 0.00, "behaves exactly like
+this card behaves" — is unreachable by *any* replay. A campaign is three to nine
+transactions, and a slice that short does not carry a whole history's dispersion or
+autocorrelation: a card that goes quiet for a week and then spends three times in an
+evening has a high gap CV across a year and a much lower one inside any single window of
+it. So `ceiling_stats` cuts real, uncopied blocks of the same lengths from the same
+victims, applies the same jitter and scale, and scores them on the same statistics. Against
+that, the copy is not most of the way there — **it is there**: 0.66 against 0.67, and −0.14
+against −0.14. Resampling the marginals is what falls short, on both.
+
+The third row is the one place the copy does *not* reach its ceiling, and the reason is
+`REPLAY_JITTER`. Multiplying a week-long gap by ±10% moves it ±17 hours, so hour alignment
+decays after the first transaction — 66.3% against the 70.7% a jittered real block manages,
+still ahead of the 59.7% mimicry gets by snapping each transaction onto one of the victim's
+hours. The fourth row is **not** a joint-structure statistic and is not scored as one: it
+is a marginal property that mimicry wins by construction, and what it measures for the
+replay is `REPLAY_SCALE`. The block is the victim's own shape multiplied by up to 1.3, so a
+block containing their largest transaction clears their record. That trade is worth naming
+rather than hiding: a replay at scale 1.0 is perfectly faithful and steals exactly what the
+victim would have spent anyway.
 
 **And none of it changes what the detector does.**
 
-| gated pool, 6 seeds, 0.1% FPR budget | `threshold_hugging` | `trajectory_replay` |
+| gated pool, 12 seeds, 0.1% FPR budget | `threshold_hugging` | `trajectory_replay` |
 |---|---|---|
-| as generated | 0.02% | 0.02% |
-| inherited block ← real fraud (experiment E) | 12.70% | 12.77% |
-| **paired difference** | — | **−0.07% ± 0.12%** |
+| as generated | 0.03% | 0.15% |
+| inherited block ← real fraud (experiment E) | 11.85% | 11.86% |
+| **paired difference** | — | **−0.01%, 95% CI ±0.40%** |
 
-*(real fraud itself: 15.14%)*
+*(real fraud itself: 14.92%. On the ungated pool the same comparison gives 15.65% vs
+15.38%, a paired +0.27% ± 0.43%.)*
 
-The second row is the one that had to be run. As generated, both vectors sit at the floor,
-and comparing two zeroes proves nothing — the controlled columns are invisible, so no
-difference between them could show up even if one existed. Transplanting the inherited
-block from real fraud is what makes the campaigns detectable at all, and it is therefore
-the only place a difference *could* appear. It does not. The comparison is **paired** —
-same seed, same detector, same threshold, same transplant donors — so the per-seed
-difference cancels almost all the variance the two levels carry separately; comparing the
-levels alone would have been badly underpowered. At ±0.12% it rules out any paired gap
-beyond 0.24%, which is a real null rather than a shrug, though not a proof of no
-difference.
+The second row is the one that had to be run. As generated, both vectors sit at the floor —
+0.03% and 0.15% are one and two flagged rows in a thousand, and the paired difference
+between them is not significant (p = 0.11) — and comparing two floors proves nothing, since
+the controlled columns are invisible and no difference between them could show up even if
+one existed. Transplanting the inherited block from real fraud is what makes the campaigns
+detectable at all, and it is therefore the only place a difference *could* appear. It does
+not. The comparison is **paired** — same seed, same detector, same threshold, same
+transplant donors — so the per-seed difference cancels almost all the variance the two
+levels carry separately; comparing the levels alone would have been badly underpowered. The
+interval is Student's *t* on eleven degrees of freedom rather than a normal quantile, which
+at twelve seeds is about 12% wider and is the direction that would otherwise have flattered
+the null. It rules out any paired gap beyond 0.40% on an 11.9% level — a real null rather
+than a shrug, though not a proof of no difference.
 
-So: **copying a victim's joint structure buys a large, measurable gain in sequence
-realism and no evasion whatsoever.** The realism is a fidelity result, not a security one.
-Read together with the 7.5% feasibility rate, the honest summary of the sequence-modelling
-direction on this dataset is that it is well-founded, correctly implemented, cheap to
-run — and, here, worth nothing to an attacker. Run it yourself:
+So: **copying a victim's joint structure reaches the ceiling for sequence realism and buys
+no evasion whatsoever.** The realism is a fidelity result, not a security one. Read together
+with the 7.5% feasibility rate, the honest summary of the sequence-modelling direction on
+this dataset is that it is well-founded, correctly implemented, cheap to run — and, here,
+worth nothing to an attacker. Run it yourself:
 
     .venv/bin/python scripts/audit/trajectory_replay_probe.py
 

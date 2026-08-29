@@ -27,7 +27,18 @@ import numpy as np
 from ..behaviour import day_of_week_of, hour_of
 
 TAKEOVER_GAP_S = 3_600           # a campaign starts at least an hour after the last real txn
-MAX_TAKEOVER_WAIT_DAYS = 30      # ...and within a month of it
+MAX_TAKEOVER_WAIT_DAYS = 30      # ...and within a month of it, to within the snap below
+
+# The two start paths reach a takeover time differently and that has to not become a
+# difference between the vectors. `_takeover_time` draws a wait uniformly across the
+# window and then snaps forward onto an hour, overshooting by under a day. `_phase_align`
+# has to land on a weekday as well, and matching instants only recur WEEKLY, so it cannot
+# just snap forward: doing that added a mean three and a half days on top of the same
+# uniform draw, which put replayed campaigns a systematic four days further from their
+# victim's last real transaction than mimicked ones and 12% of them outside the window
+# entirely. `time_since_last_txn_min` is a column the RED TEAM controls, so that was a
+# confound sitting in exactly the block the two vectors are compared on. It picks
+# uniformly among the matching instants INSIDE the window instead.
 
 
 @dataclass
@@ -76,6 +87,15 @@ class TemporalProfile:
     global factor, phase-aligned to the same hour-of-day and day-of-week the block
     originally happened at. The joint structure is not approximated, it is copied,
     because it is the victim's own.
+
+    What that can and cannot reach is worth stating, because the obvious yardstick is
+    wrong. A campaign is three to nine transactions, and a slice that short does not
+    carry the whole history's dispersion or autocorrelation: a card that goes quiet for
+    a week and then spends three times in an evening has a high gap CV across a year and
+    a much lower one inside any single window of it. So "as variable as this card's whole
+    history" is not achievable by a genuine copy, let alone by anything else.
+    `ceiling_stats` in the probe measures what IS achievable by cutting real, uncopied
+    blocks, and the vector is scored against that.
 
     What the attacker needs for this is exactly what an account takeover gives them —
     read access to the statement. It is not a stronger assumption than `mimic_host`,
@@ -170,9 +190,15 @@ def _host_gaps(history_ts: np.ndarray, n: int, rng: np.random.Generator) -> np.n
     return np.maximum(np.quantile(gaps, rng.uniform(0.25, 0.75, n)), 1.0)
 
 
-# A block of k attack transactions needs k+1 real ones to read k gaps from, and we
-# refuse to use the very last transaction so the replayed slice is a piece of the card's
-# settled past rather than a copy of whatever it did immediately before the takeover.
+# What a block of k attack transactions actually consumes, exactly: k real transactions
+# (k-1 gaps and k amounts), plus one more whose gap is read and discarded so the block
+# matches the sampled path's k-gap convention, plus one held back so the slice is a piece
+# of the card's SETTLED past rather than a copy of whatever it did immediately before the
+# takeover. That is k+2, one more than the k+1 the arithmetic strictly needs; the margin
+# is deliberate and it is what makes the "we never copy the last real transaction"
+# guarantee true rather than approximate. It also costs feasibility on a short-history
+# population: on the IEEE-CIS test pool k+2 admits 7.5% of campaigns where k+1 would admit
+# 8.9%, and `scripts/audit/trajectory_replay_probe.py` prints both.
 MIN_HISTORY_TO_REPLAY = 6
 
 # The attacker is spending someone else's money, so replaying a slice at exactly its
@@ -213,23 +239,31 @@ def _host_trajectory(history_ts: np.ndarray, history_amount: np.ndarray, n: int,
             int(day_of_week_of(block_ts[:1].astype(np.int64))[0]))
 
 
-def _phase_align(earliest: int, target_hour: int, target_dow: int,
+def _phase_align(earliest: int, latest: int, target_hour: int, target_dow: int,
                  rng: np.random.Generator) -> int:
-    """The first moment at or after `earliest` on the block's own hour AND weekday.
+    """A moment in [`earliest`, `latest`] on the block's own hour AND weekday.
 
     `_takeover_time` aligns the hour only. That is enough when the gaps come from a band,
     but a replayed block carries a weekly rhythm in its gaps — a Friday-evening slice
     started on a Tuesday morning lands its whole sequence on the wrong days, and
     `day_of_week` is a column the detector reads.
+
+    Chosen uniformly among the matching instants in the window rather than taken as the
+    first one at or after `earliest`. Hour-and-weekday matches recur weekly, so "the first
+    one" is a draw from a single week and the campaign then waits however long that
+    happens to be — a mean three and a half days later than the uniform draw the other
+    vectors make. Picking among the four-or-so slots inside the window instead keeps the
+    wait comparable and keeps it inside the window, which taking the first one did not.
     """
     base = (int(earliest) // 3_600) * 3_600
     dh = (target_hour - int(hour_of(np.array([base]))[0])) % 24
     t = base + dh * 3_600
     dd = (target_dow - int(day_of_week_of(np.array([t]))[0])) % 7
-    t += dd * 86_400 + int(rng.integers(0, 3_600))
+    t += dd * 86_400
     while t < earliest:              # adding a whole week preserves both hour and weekday
         t += 7 * 86_400
-    return int(t)
+    slots = max(int((int(latest) - t) // (7 * 86_400)) + 1, 1)
+    return int(t + int(rng.integers(0, slots)) * 7 * 86_400 + int(rng.integers(0, 3_600)))
 
 
 # How often a campaign starts at an hour outside its vector's usual band. Without this
@@ -341,15 +375,15 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
         a_amt = None
         if traj is not None:
             a_gaps, a_amt, blk_hour, blk_dow = traj
-            first = earliest if earliest is not None else (
-                host.last_ts + TAKEOVER_GAP_S
-                + int(rng.integers(0, MAX_TAKEOVER_WAIT_DAYS * 86_400)))
+            # No uniform wait is drawn here: `_phase_align` draws it, by choosing among
+            # the aligned instants in the same window the other vectors sample from.
+            first = earliest if earliest is not None else host.last_ts + TAKEOVER_GAP_S
             # A coordinated vector has to fire inside its shared window, so it does not
-            # also get to pick its weekday: phase alignment can push a start out by up to
-            # a week, which would pull the batch apart. No shipped vector combines the
-            # two; this is what happens if one ever does.
-            start = (first if anchor is not None
-                     else _phase_align(first, blk_hour, blk_dow, rng))
+            # also get to pick its weekday: phase alignment can move a start by up to a
+            # month, which would pull the batch apart. No shipped vector combines the two;
+            # this is what happens if one ever does.
+            start = (first if anchor is not None else _phase_align(
+                first, first + MAX_TAKEOVER_WAIT_DAYS * 86_400, blk_hour, blk_dow, rng))
         else:
             start = _takeover_time(host.last_ts, profile.start_hour_band, base_profile,
                                    rng, host_hours=host_hours, earliest=earliest)
@@ -362,9 +396,15 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
         # gaps came from the vector's own band and became weeks once they came from the
         # victim's — long enough to break a coordinated window apart.
         a_ts = start + np.r_[0.0, np.cumsum(a_gaps[:-1])]
-        # A replayed block's hours are already this card's own, because they came off its
-        # real timeline. Snapping each one independently would break the sequence the
-        # replay exists to preserve.
+        # Not snapped, because a replayed block's hours came off this card's real
+        # timeline and snapping each one independently would break the sequence the
+        # replay exists to preserve. Worth being exact about how far that holds: the
+        # FIRST attack lands on an hour the victim genuinely transacts at essentially
+        # always, since `_phase_align` puts it there, but REPLAY_JITTER is multiplicative
+        # and a week-long gap carries +-10% = +-17 hours, so later transactions drift.
+        # Measured on the gated pool that is 99.9% for the first and 66% for the rest,
+        # against 60% for mimicry's per-transaction snap -- better, but only just, and
+        # the probe reports it rather than this comment asserting it.
         if traj is None and per_victim:
             a_ts = _snap_hours(a_ts, host_hours, rng)
 

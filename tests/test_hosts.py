@@ -404,11 +404,33 @@ def test_replay_preserves_a_cadence_that_mimicry_flattens(base):
             out.append((ag.std() / ag.mean()) / (rg.std() / rg.mean() + 1e-12))
         return float(np.median(out))
 
+    # The reference is NOT 1.00. A campaign is 3-9 transactions, and a slice that short
+    # does not carry the whole history's dispersion, so even a perfect uncopied block
+    # scores well below 1. Measure that ceiling on this same fixture and score both
+    # vectors against it, or the test rewards being closer to something unreachable.
+    def ceiling(seed):
+        rng = np.random.default_rng(seed)
+        lo, hi = TrajectoryReplay.temporal.txns_per_entity
+        out = []
+        for i in rng.integers(0, len(pool), 2_000):
+            ts = pool._host(int(i)).history_ts.astype(float)
+            n = int(rng.integers(lo, hi + 1))
+            if n < 3 or len(ts) < n + 2:
+                continue
+            rg = np.diff(ts)
+            j = int(rng.integers(0, len(ts) - n - 1))
+            bg = np.diff(ts[j:j + n])
+            if rg.mean() <= 0 or rg.std() <= 0 or bg.mean() <= 0:
+                continue
+            out.append((bg.std() / bg.mean()) / (rg.std() / rg.mean()))
+        return float(np.median(out))
+
+    ceil = np.median([ceiling(s) for s in (0, 1, 2)])
     replay = np.median([cv_ratio(TrajectoryReplay, s) for s in (0, 1, 2)])
     mimic = np.median([cv_ratio(ThresholdHugging, s) for s in (0, 1, 2)])
-    assert abs(replay - 1.0) < abs(mimic - 1.0), (
+    assert abs(replay - ceil) < abs(mimic - ceil), (
         f"replay should carry the victim's own burstiness: gap-CV ratio {replay:.2f} "
-        f"(replay) vs {mimic:.2f} (mimicry), where 1.00 is the victim's real cadence"
+        f"(replay) vs {mimic:.2f} (mimicry), against a real block's {ceil:.2f}"
     )
 
 
@@ -420,15 +442,19 @@ def test_phase_alignment_lands_on_the_blocks_own_hour_and_weekday(base):
     from chhal.behaviour import day_of_week_of, hour_of
     from chhal.redteam.campaign import _phase_align
 
+    from chhal.redteam.campaign import MAX_TAKEOVER_WAIT_DAYS
+
     rng = np.random.default_rng(1)
+    window = MAX_TAKEOVER_WAIT_DAYS * 86_400
     for _ in range(300):
         earliest = int(rng.integers(0, 400 * 86_400))
         h, d = int(rng.integers(0, 24)), int(rng.integers(0, 7))
-        t = _phase_align(earliest, h, d, rng)
+        t = _phase_align(earliest, earliest + window, h, d, rng)
         assert t >= earliest
         assert int(hour_of(np.array([t]))[0]) == h
         assert int(day_of_week_of(np.array([t]))[0]) == d
-        assert t - earliest < 8 * 86_400 + 3_600      # at most one week of waiting
+        # inside the window it was handed, not merely at the first matching instant
+        assert t - earliest < window + 3_600
 
 
 def test_replay_still_starts_after_the_last_real_transaction(base):
@@ -443,3 +469,72 @@ def test_replay_still_starts_after_the_last_real_transaction(base):
     for h_ts, _, a_ts, _ in _campaigns(camp):
         if len(a_ts):
             assert a_ts.min() > h_ts.max()
+
+
+def test_replay_waits_about_as_long_as_mimicry_does(base):
+    """The probe compares the two vectors on the columns the RED TEAM controls, and
+    `time_since_last_txn_min` is one of them — so the takeover wait has to be a property
+    of the pair, not a difference between them.
+
+    `_phase_align` can push a start most of a week past the moment it was handed, which
+    is the price of landing on the block's own weekday. Drawn from the full
+    `MAX_TAKEOVER_WAIT_DAYS` window that pushed replayed campaigns a systematic four days
+    further from their victim's last real transaction than mimicked ones, and put 12% of
+    them outside the documented month. `PHASE_ALIGN_SLACK_S` shortens the draw by exactly
+    what the alignment can add back.
+    """
+    from chhal.redteam.campaign import MAX_TAKEOVER_WAIT_DAYS
+    from chhal.redteam.vectors import ThresholdHugging, TrajectoryReplay
+
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    pool = _replay_pool(base)
+
+    def waits(V):
+        out = []
+        for seed in (0, 1, 2):
+            _, camp = V().calibrate(prof, pool).render_with_timeline(
+                400, np.random.default_rng(seed))
+            for h_ts, _, a_ts, _ in _campaigns(camp):
+                if len(a_ts):
+                    out.append((a_ts[0] - h_ts[-1]) / 86_400.0)
+        return np.array(out)
+
+    replay, mimic = waits(TrajectoryReplay), waits(ThresholdHugging)
+    assert replay.min() > 0, "a campaign may not start before its victim's last real txn"
+    # a day of slack over the nominal window: both paths snap forward onto an hour
+    assert replay.max() < MAX_TAKEOVER_WAIT_DAYS + 1, (
+        f"replay waited {replay.max():.1f} days, past the {MAX_TAKEOVER_WAIT_DAYS}-day "
+        "window the vector documents"
+    )
+    # The MEAN, not the median. Aligned instants recur weekly, so a replayed wait is one
+    # of about four values per victim; the median of something that discrete jumps between
+    # atoms and says nothing. What has to match is the level, because that is what a
+    # systematic offset in `time_since_last_txn_min` would look like.
+    assert abs(replay.mean() - mimic.mean()) < 2.0, (
+        f"replay waits a mean {replay.mean():.1f} days and mimicry {mimic.mean():.1f} — "
+        "that is a controlled-column difference between two vectors that are supposed to "
+        "differ only in where the timeline comes from"
+    )
+
+
+def test_the_probe_cannot_reach_the_shipped_suite():
+    """`replay_host` was wired into `generate()` after every headline number was already
+    measured, and the one thing that could not be allowed to happen is that wiring moving
+    those numbers. It does not, because the shipped vectors never take the replay branch —
+    but that is a property of their profiles, not of the code, so it is asserted here
+    rather than left to whoever edits `vectors.py` next.
+
+    A shipped vector that set `replay_host=True` would change its own results AND, by
+    consuming the generator differently, every vector rendered after it in the same batch.
+    """
+    from chhal.redteam.vectors import TrajectoryReplay
+
+    assert TrajectoryReplay not in ALL_VECTORS, (
+        "TrajectoryReplay is a probe run against threshold_hugging as its control; in the "
+        "suite it would be a second near-identical vector reweighting every aggregate"
+    )
+    offenders = [V.vector_id for V in ALL_VECTORS if V.temporal.replay_host]
+    assert not offenders, (
+        f"{offenders} take the replay path, so the headline numbers no longer come from "
+        "the code that produced them"
+    )
