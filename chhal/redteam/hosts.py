@@ -18,12 +18,17 @@ Leakage discipline, all enforced here
   fraudulent account's rows carry label information we would then be smuggling into an
   attack row.
 * Hosts come from the split the attacks will be used in — train-time attacks mount on
-  train accounts, evaluation attacks on test accounts. 34.8% of test accounts also have
-  transactions before the temporal cut, so evaluation pools additionally EXCLUDE any
-  account seen in training (`exclude_accounts`). Strictly this is belt-and-braces: hosts
-  are all-legitimate, so no label crosses over, and recognising a legitimate account's
-  signature would push an attack toward "legit" and make detection harder rather than
-  easier. Excluding them removes the argument entirely.
+  train accounts, evaluation attacks on test accounts. Evaluation pools additionally
+  EXCLUDE any account seen in training (`exclude_accounts`), which on `source="ieee"` is
+  now a NO-OP and is kept as defence rather than as a load-bearing control: measured on the
+  parquet, train and test share 0 of 173,275 accounts, because `prepare_ieee.py` already
+  relabels every account straddling the temporal cut into its own `straddle` block so those
+  rows never reach `base.test` at all. (Before that purge the overlap was substantial, and
+  this exclusion was the only thing handling it.) It still does real work on
+  `source="synthetic"`, where nothing upstream guarantees disjoint accounts. Either way it
+  was belt-and-braces: hosts are all-legitimate, so no label crosses over, and recognising
+  a legitimate account's signature would push an attack toward "legit" and make detection
+  harder rather than easier.
 * Attack transactions are timestamped strictly AFTER the host's last real transaction.
   A campaign continues an account; it cannot reach into its past.
 * Inherited values are read from the host's LAST real transaction, which is the most

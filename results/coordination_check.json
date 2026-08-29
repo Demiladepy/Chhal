@@ -82,6 +82,8 @@
       "read_at_fpr": 0.05,
       "mean_pp": 2.3,
       "sem_pp": 2.59,
+      "crit": 3.961,
+      "selected_over_n_fprs": 3,
       "beats_its_own_noise": false,
       "all_operating_points": {
         "0.001": [
@@ -102,6 +104,8 @@
       "read_at_fpr": 0.05,
       "mean_pp": -0.97,
       "sem_pp": 0.64,
+      "crit": 3.961,
+      "selected_over_n_fprs": 3,
       "beats_its_own_noise": false,
       "all_operating_points": {
         "0.001": [
@@ -122,6 +126,8 @@
       "read_at_fpr": 0.001,
       "mean_pp": -25.03,
       "sem_pp": 3.19,
+      "crit": 3.961,
+      "selected_over_n_fprs": 3,
       "beats_its_own_noise": true,
       "all_operating_points": {
         "0.001": [
@@ -142,6 +148,8 @@
       "read_at_fpr": 0.001,
       "mean_pp": -8.83,
       "sem_pp": 4.89,
+      "crit": 3.961,
+      "selected_over_n_fprs": 3,
       "beats_its_own_noise": false,
       "all_operating_points": {
         "0.001": [

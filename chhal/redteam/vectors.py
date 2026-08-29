@@ -167,8 +167,10 @@ class UpiCollectScam(AttackVector):
     higher-limit variant. Second, the P2P rail could never have carried this attack
     anyway: a circular of 31 October 2019 capped P2P collect at Rs 2,000 per
     transaction with 50 successful transactions a day, while this vector's
-    `amount_band` of (0.75, 0.96) is roughly $117-$505 of legitimate test traffic --
-    5x to 21x over that cap on every single hop. So the P2P framing was wrong on
+    `amount_band` of (0.75, 0.96) is $125-$500 of legitimate TRAIN traffic -- which is what
+    `BaseProfile` samples from, `data._profile_from_train` having fitted the quantiles on
+    the training split; the same band read off test traffic would be $141-$593 -- 5x to 21x
+    over that cap on every single hop. So the P2P framing was wrong on
     amount from the day it was written, independently of the 2025 withdrawal.
 
     The mechanic the attacker actually uses is impersonation of a verified merchant:
@@ -300,8 +302,14 @@ class AutopayMandate(AttackVector):
     Like `mule_fanout`, the static columns are held near legitimate base rates on purpose: a
     constant `is_new_beneficiary` or an all-domestic flag would let the detector catch the
     vector on that one column and make the temporal measurement worthless. They are set to
-    the measured TEST-split legitimate rates, because hosts are drawn from `base.test`
-    (`loop.py`): `is_new_beneficiary` 0.3262 and `is_cross_border` 0.0036.
+    `is_new_beneficiary` 0.3262 and `is_cross_border` 0.0036, and those two numbers do NOT
+    reproduce as the legitimate test-split rates they were once labelled as: on `base.test`
+    the real values are 0.5517 and 0.0057 (train-side, 0.4404 and 0.0079). They sit near the
+    never-fraudulent host-pool subset instead, and the residual gap on `is_new_beneficiary`
+    -- roughly 22 points below the population the detector actually scores against -- is a
+    tell in the same direction this paragraph warns about, just a far smaller one than a
+    constant would be. Left as they are so the shipped numbers keep reproducing, and named
+    here rather than quietly mislabelled.
 
     What this vector does NOT encode
     --------------------------------
@@ -314,9 +322,10 @@ class AutopayMandate(AttackVector):
 
     Why the cadence is WEEKLY, not monthly
     --------------------------------------
-    The constraint is the data. The test split spans 52.8 days; 4-8 transactions at a
-    monthly gap would span 84-224 days, so every campaign would overrun the evaluation
-    window by 1.6x to 4.2x. That is not a leak -- no absolute timestamp is in
+    The constraint is the data. The test split spans 45.8 days -- 52.8 is the span from the
+    start of the embargo block, which belongs to neither split by design -- and this vector
+    emits 4-7 transactions (`txns_per_entity`). At a monthly gap those would span 84-186
+    days, so every campaign would overrun the evaluation window by 1.8x to 4.1x. That is not a leak -- no absolute timestamp is in
     `FEATURE_COLUMNS`, `hour` and `day_of_week` are cyclic and the rest are relative -- but
     `account_age_days` IS in the contract, and `behaviour.py` grows it by time elapsed
     since the host's last real transaction. The tail of a long campaign would then drift
@@ -334,7 +343,7 @@ class AutopayMandate(AttackVector):
         "cadence from an established-looking payee -- indistinguishable from a legitimate "
         "subscription, tripping no velocity or burst rule -- and runs unnoticed."
     )
-    new_payee_rate = 0.3262  # the measured legit test-split rate, not a low constant
+    new_payee_rate = 0.3262  # near the host-pool rate; legit test is 0.5517
     temporal = TemporalProfile(
         txns_per_entity=(4, 7),                            # several billing cycles
         inter_arrival_s=(6.5 * 86_400.0, 7.5 * 86_400.0),  # ~weekly, low variance = regular
@@ -347,7 +356,7 @@ class AutopayMandate(AttackVector):
         return {
             # mostly a known payee (the mandate looks established), not a constant tell
             "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
-            "is_cross_border": p.bernoulli(0.0036, n, rng),         # the legit test-split rate
+            "is_cross_border": p.bernoulli(0.0036, n, rng),         # cf. 0.0057 on legit test
             "channel_code": p.categorical("channel_code", n, rng),  # sampled; see docstring
         }
 

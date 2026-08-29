@@ -54,6 +54,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+from scipy.stats import t as student_t   # `stats` is a local dict below
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -194,14 +195,25 @@ def main() -> None:
         # on the floor. Picking by signal-to-noise avoids choosing either wall.
         scored = [(f,) + delta(off, on, f) for f in FPRS]
         best, m, sem = max(scored, key=lambda x: abs(x[1]) / (x[2] + 1e-9))
-        decisive = abs(m) > 2 * sem and abs(m) >= 1.0
+        # Two corrections, because the line above SELECTED this operating point by
+        # maximising |t| and a naive test on a selected maximum is not a 95% test.
+        #   1. Student's t on len(SEEDS)-1 degrees of freedom, not 2.0. With five seeds the
+        #      normal quantile is 2.00 against a correct 2.776 -- a 39% understatement,
+        #      in the direction that manufactures findings.
+        #   2. Bonferroni over the len(FPRS) operating points the maximum was taken over,
+        #      since the alternative is to pre-register one and this script's whole reason
+        #      for scanning is that it does not know in advance which is sensitive.
+        crit = float(student_t.ppf(1 - 0.05 / (2 * len(FPRS)), len(SEEDS) - 1))
+        decisive = abs(m) > crit * sem and abs(m) >= 1.0
         findings[label] = {
             "read_at_fpr": best, "mean_pp": round(m, 2), "sem_pp": round(sem, 2),
+            "crit": round(crit, 3), "selected_over_n_fprs": len(FPRS),
             "beats_its_own_noise": decisive,
             "all_operating_points": {str(f): [round(mm, 2), round(ss, 2)]
                                      for f, mm, ss in scored},
         }
-        verdict = "clears 2 SEM" if decisive else "INSIDE THE NOISE - not a finding"
+        verdict = (f"clears {crit:.2f} SEM (t, Bonferroni over {len(FPRS)} FPRs)" if decisive
+                   else "INSIDE THE NOISE - not a finding")
         print(f"  {label:<26} {m:+6.1f} +/- {sem:4.1f} pp  at {best:.1%}   {verdict}")
 
     print("\nOne confound, stated rather than buried: switching coordination on also "

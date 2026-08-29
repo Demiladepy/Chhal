@@ -178,8 +178,12 @@ than trusted.
 
 The two alert rates are also separate on purpose. The 3.279% divides by the scored mixture
 — real legitimate traffic *plus however many attacks this run generated* — so it moves with
-a config knob: the same detector reported 0.16%, 0.80% and 3.19% as `benchmark_per_vector`
-went 100 → 500 → 2000. The 0.774% is measured on the real test set alone and is the one an
+a config knob. It is analytically predictable rather than mysterious: with 73,156 legit test
+rows, a realised legit FPR of 0.0998% and 80.8% attack recall, `benchmark_per_vector` of
+100 / 500 / 2000 gives roughly **0.8% / 3.3% / 11.5%**, and the shipped run's 3.279% is the
+middle one. (An earlier version of this sentence quoted 0.16% / 0.80% / 3.19%, which
+mislabelled the run it came from — 500 per vector is the 3.279% in `summary.json`, not the
+0.80%.) The 0.774% is measured on the real test set alone and is the one an
 ops team would staff against.
 
 For comparison, the naive 0.5 cutoff on the same run: F1 0.0023 → 0.8808, ROC AUC 0.9936, FP on
@@ -518,12 +522,21 @@ operating points, each variant differing from its control in exactly one thing.
 |---|---|---|---|
 | per-victim mimicry | **+2.3 ± 2.6** pts | 5% FPR | inside the noise |
 | coordination | **−1.0 ± 0.6** pts | 5% FPR | inside the noise |
-| `is_new_beneficiary` at all | **−25.0 ± 3.2** pts | 0.1% FPR | clears 2 SEM |
+| `is_new_beneficiary` at all | **−25.0 ± 3.2** pts | 0.1% FPR | clears 3.96 SEM |
 | …and hard-coding it to 1 | **−8.8 ± 4.9** pts | 0.1% FPR | inside the noise |
 
 (± is the standard error of the paired per-seed difference, not the spread of one run. A
 positive number is recall the detector *loses* when the choice is switched on, so it is a
 gain for the attacker; a negative one means the choice makes the attack easier to catch.)
+
+**The bar is 3.96 SEM, not 2.** The script reads each comparison at whichever of its three
+operating points has the largest |t|, which is a selection, and a naive 2-SEM rule applied
+to a selected maximum is not a 95% test. So the threshold is Student's *t* on four degrees
+of freedom (2.776, since there are five seeds — the normal 2.00 understates it by 39%)
+with a Bonferroni correction over the three operating points, giving 3.96. It changes no
+verdict in this table: the only row that cleared 2 SEM sits at |t| = 7.8 and clears 3.96
+comfortably, and nothing else came close under either rule. It is corrected because the
+rule was wrong, not because the answer was.
 
 **The third row is the clean result, and it is not the one we set out to prove — it runs
 against us.** The detector catches `mule_fanout` substantially on one binary column: turn
@@ -551,7 +564,7 @@ restores the old behaviour is kept in the ablation precisely so this row can exi
 
 **Coordination no longer clears its error bars, and an earlier version of this file said
 it did.** On the pre-purge split it read +2.5 ± 0.8 points at a 1% budget and was written
-up as clearing 2 SEM with a confound attached. On the split with the delay period and the
+up as clearing its error bars with a confound attached. On the split with the delay period and the
 entity purge it reads **−1.0 ± 0.6** points — the wrong sign and inside the noise. The
 confound was real and is now moot: a coordinated batch draws hosts that were live shortly
 before its window, so the two mule variants never shared a host population, and this design
@@ -934,7 +947,7 @@ adversarial retraining achieve against a red team we wrote. 14.2% is what the sa
 does to fraud that actually happened, and it is the number that does not move no matter how
 many rounds are run.
 
-Reported once and not led with: **CP@100 is 31.8% ± 8.6** on the same split
+Reported once and not led with: **CP@100 is 31.8% ± 1.3** on the same split (standard error over 46 days; the per-day *spread* is a much larger ±8.6, and `results/card_precision_at_k.csv` carries both)
 (`scripts/audit/card_precision_at_k.py`), 7.4× a randomly filled queue. Card Precision at k
 is the closest thing the fraud literature has to an operational metric — rank cards by their
 highest score of the day, work the top hundred — and it is a far friendlier number than
@@ -965,13 +978,18 @@ false-positive budget:
 
 | variant | unseen attack family | real IEEE-CIS fraud |
 |---|---|---|
-| supervised only | **0.5444** | **0.1498** |
-| max fusion (either arm flags) | 0.4644 ✗ | 0.1114 ✗ |
-| stacked (anomaly score as a feature) | 0.5200 ✗ | 0.1383 ✗ |
+| supervised only | **0.3187** | **0.0741** |
+| max fusion (either arm flags) | 0.2090 ✗ | 0.0474 ✗ |
+| stacked (anomaly score as a feature) | 0.3163 ✗ | 0.0803 |
 
-**The anomaly arm alone now scores 0.0000 on unseen attacks and 0.006 on real fraud**, and
+**The anomaly arm alone scores 0.0000 on unseen attacks and 0.0066 on real fraud**, and
 carries **0.0%** of the catches — not a rounding of something small, but nothing at all.
-`max` fusion loses badly, 8.0 points on unseen families; stacking loses 2.4.
+`max` fusion loses badly, 11.0 points on unseen families; stacking loses 0.2.
+
+(These are a re-run on the current six-vector suite and the post-purge split. The table
+here previously read 0.5444 / 0.4644 / 0.5200, from an artifact written before
+`autopay_mandate` existed and before straddling accounts were purged — five vectors and a
+superseded split. The verdict is unchanged and the margin against `max` fusion is wider.)
 
 **Do not read the sign of any single run as a result.** Across five measurements the
 stacking delta on unseen families came out at −1.25, −3.20, +2.00, −0.40 and −2.44 points
@@ -1055,6 +1073,12 @@ The feature space partitions cleanly, and the partition is the design:
 | **attacker-controlled** | 9 | the fraudster: amount, timing, velocity, payee, rail, destination |
 | **inherited** | 16 | the issuer: account age, merchant risk, the 14 linkage counts |
 | derived from the timeline | 1 | `day_of_week` |
+
+The attacker picks the timestamp, so `day_of_week` is theirs in practice even though
+`contract.ATTACKER_CONTROLLED` lists only the nine it sets directly. Every experiment in
+this README therefore operates on **ten** columns — `fidelity.CONTROLLED_FEATURES`, which is
+the nine plus `day_of_week` — and that is the set meant wherever the text says "the ten
+columns the red team controls".
 
 The evasion optimizer moves only the first group, and a test asserts it leaves the second
 byte-identical. It also **only clips the first group** to the plausibility manifold: a
@@ -1222,7 +1246,9 @@ all.** A block of *k* attack transactions is cut from *k+2* real ones — *k* th
 replayed, one whose gap is read and discarded, and one held back so the victim's last real
 transaction is never copied — and IEEE-CIS accounts are short: the eligible test hosts have
 a median of **two** transactions each. On the pool the loop actually uses, only **7.5%** of
-campaigns have a victim long enough; the rest fall back to mimicry. Dropping the held-back
+campaigns have a victim long enough. The rest do not simply fall back to mimicry, because
+mimicry has a history floor of its own that a two-transaction host also misses: measured on
+that pool the split is **7.5% replay, 21.3% mimicry, 71.2% population bands**. Dropping the held-back
 transaction, the loosest bound the arithmetic allows, moves that to 8.9%, so the shortage
 is the population and not the margin. That is not an implementation limit either. It is the
 same limit a real attacker faces, because you cannot replay a statement with three lines on
@@ -1312,10 +1338,10 @@ python scripts/latency_check.py
 
 | | p50 | p95 | p99 |
 |---|---|---|---|
-| **full path, single transaction** | **1.26 ms** | 1.35 ms | **1.42 ms** |
+| **full path, single transaction** | **1.29 ms** | 1.52 ms | **1.94 ms** |
 
-**~35× headroom** against a 50ms risk-decision budget at p99. Batch throughput is
-**172,740 txns/sec** (5.8 µs each) at a batch of 10,000 — that is the nightly-rescoring
+**25.7× headroom** against a 50ms risk-decision budget at p99. Batch throughput is
+**165,350 txns/sec** (6.0 µs each) at a batch of 10,000 — that is the nightly-rescoring
 number, not the live-auth one, and should not be quoted as such.
 
 Model footprint is 34MB, of which the anomaly arm is 32MB — dropping it, which the
@@ -1371,7 +1397,10 @@ raw IEEE-CIS: velocity, recency and amount-to-average are computed **within a re
 account** (`card1 + addr1 + first-seen-day`, the community-standard uid) over the real time
 ordering, using only transactions strictly before the row they describe. `account_age_days`
 is the dataset's own `D1`; `is_cross_border` is `addr2 != 87`; `merchant_risk` is a smoothed
-historical fraud rate fit **out-of-fold on the training split only**; the fourteen
+historical fraud rate fit as an **expanding window over transaction time** — each row sees
+only the frauds already settled in its bucket before it, never a random fold that could
+contain December when the row is from June (the out-of-fold scheme it replaces is written
+up under [Leakage rules](#leakage-rules-all-enforced-in-code)); the fourteen
 entity-linkage counts are the dataset's own `C1-C14`, carried through unchanged and
 inherited rather than generated (see
 [Mounting attacks on real accounts](#mounting-attacks-on-real-accounts)). Every

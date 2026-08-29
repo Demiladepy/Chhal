@@ -90,9 +90,12 @@ class AttackVector(ABC):
     # the vectors used to hard-code the flag to 1 on 100% of rows, which is not
     # what fraud looks like — a bust-out reuses a drop account, a card tester hits a
     # merchant twice, an operator sends to the same mule again. It was also a
-    # self-inflicted tell: the ablation in scripts/coordination_check.py measured the
-    # detector gaining 26.3 +/- 7.3 points of recall from that one deterministic
-    # column, on a feature that in real IEEE-CIS traffic sits on 41.2% of LEGITIMATE
+    # self-inflicted tell: the ablation in scripts/coordination_check.py measures the
+    # detector gaining 25.0 +/- 3.2 points of recall from that one column at a 0.1% budget
+    # (results/coordination_check.json, "the new-beneficiary flag" -- the only comparison in
+    # that file that beats its own noise). Hard-coding the flag to 1 rather than removing
+    # the column costs a further 8.8 +/- 4.9, which does NOT clear its noise and is not
+    # quoted as though it did. The column sits on 41.2% of LEGITIMATE
     # transactions and only 35.7% of frauds — slightly LESS common in real fraud than
     # in ordinary spending. A vector that sets it every time has painted a target on
     # itself, and the recall it loses to that target was never really earned.
