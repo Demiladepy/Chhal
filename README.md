@@ -594,6 +594,80 @@ is being paid.** That is the same single-column dependence the `mule_fanout` abl
 in a second vector, measured a second way — and it is the reason a card-testing recall
 number should never be quoted without this table beside it.
 
+### `card_testing` is also the only fraud agentic commerce has a word for
+
+Not a result of this system, and not measurable on IEEE-CIS — 2019 card data predates
+agentic commerce by six years, so nothing in this repo observes an agent. It is context for
+why the easiest vector in the suite is the one worth naming, and every claim in it is
+re-derived from the live spec by
+[`scripts/audit/acp_vocabulary.py`](scripts/audit/acp_vocabulary.py) rather than quoted from
+a reading.
+
+The **Agentic Commerce Protocol** (maintained by OpenAI and Stripe) is how an AI agent hands
+a payment to a PSP. Version `2026-04-17` is six OpenAPI specs, 6,225 lines. In
+`openapi.delegate_payment.yaml`, the entire fraud vocabulary a PSP is handed is this:
+
+```yaml
+RiskSignal:
+  additionalProperties: false
+  properties:
+    type:  { enum: [card_testing] }
+    action: { enum: [blocked, manual_review, authorized] }
+```
+
+**One member, and the schema is closed.** There is no way to report a bust-out, a mule
+fan-out, a velocity anomaly or a mimicry pattern — card testing is the only fraud this
+protocol can name. And it is not a draft artifact: the enum is byte-identical in every
+published version from `2025-09-29` through `unreleased`, eleven months.
+
+Three details make it sharper than a missing-feature complaint:
+
+- **`risk_signals` is required in the request and absent from the response.** The signal
+  travels agent → PSP carrying a field the spec calls *"Recommended action"*, and
+  `DelegatePaymentResponse` has exactly three fields — `id`, `created`, `metadata`. There is
+  no field in which the PSP can disagree.
+- **No pacing vocabulary exists at all.** Zero matches for velocity, attempt counts, cadence
+  or throttling across all six specs. The six occurrences of `rate_limit` are HTTP error
+  codes. Every behavioural feature this repo's detector runs on — both velocities, the
+  inter-transaction gap, the amount-to-average ratio — is inexpressible in the protocol that
+  is meant to carry agent payments.
+- **An agent cannot declare itself an agent.** In the 3DS2 flow, `Channel.type` is an enum
+  with a single member, `browser`, and `required: [type, browser]` makes `BrowserInfo`
+  mandatory — user agent, accept header, `javascript_enabled`, screen dimensions. At the one
+  point where a caller says what kind of client it is, the only permitted answer is
+  "browser". **The protocol obliges an agent to look like a browser.**
+
+For scale, the authentication spec in the same folder spends **ten** enum members on
+authentication outcomes (`action_required`, `pending`, `not_supported`, `authenticated`,
+`attempted`, `not_authenticated`, `rejected`, `unavailable`, `expired`,
+`challenge_abandoned`) and one on fraud types.
+
+Other protocols do more here, and saying so is the difference between a finding and a
+grievance. Google's **AP2** defines a mandate vocabulary — `IntentMandate`, `CartMandate`,
+`PaymentMandate`, carrying `merchants`, `skus`, `intent_expiry`, `cart_expiry` and
+`user_cart_confirmation_required` — which is a scope-and-expiry language for what an agent
+is permitted to do. **Visa's Trusted Agent Protocol** (October 2025) gives agents
+cryptographic identity via RFC 9421 HTTP Message Signatures (ed25519, rsa-pss-sha256), so a
+merchant can tell a credentialed agent from anonymous traffic. Neither is a fraud-pattern
+vocabulary either, but both are closer to one than ACP is.
+
+**What this earns.** Nothing about detection — no number here comes from an agent, and
+suggesting otherwise would be inventing evidence. What it earns is the observation that the
+one fraud type agentic commerce is currently able to name is also the one this repo finds
+easiest to catch (97.0%), the one it generalises to worst when held out (12.2%), and the one
+with a legitimate confusable class that costs 38.8% of retries to get wrong. Being the only
+named pattern has not made it a solved one.
+
+**An earlier draft of this section said "the entire standard names one fraud pattern",
+having read one of the six specs.** The enum was real; the claim about the standard was not.
+It is the same error this project made once before — `upi_collect` was modelled on a UPI
+rail that a 2019 NPCI circular had capped at ₹2,000 per transaction, five to twenty-one
+times below every amount the vector generates, so it was wrong from the day it was written
+rather than wrong because a rule changed (see the `UpiCollectScam` docstring in
+[`chhal/redteam/vectors.py`](chhal/redteam/vectors.py)). Both mistakes are a confident
+sentence built from a partial read, which is why this section is a script instead of a
+paragraph.
+
 ---
 
 ## The constrained evasion optimizer — the novel core

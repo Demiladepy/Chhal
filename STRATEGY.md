@@ -154,7 +154,10 @@ implemented and run in the live loop.
 - Automated mule recruitment funnels — ◆ showcase
 - Synthetic merchants / transaction laundering through fake storefronts — ◆ showcase
 
-**Agentic-commerce fraud (our unfair advantage — but these are SHOWCASE, not the loop)**
+**Agentic-commerce fraud (SHOWCASE, not the loop — and see the README's ACP section for
+what the protocol layer can and cannot express; every claim there is re-derived from the
+live spec by `scripts/audit/acp_vocabulary.py`, because the first version of it was written
+from one file out of six)**
 - ◆ **Prompt-injection against AI shopping/payment agents** — redirect a payment or
   exfiltrate card credentials by poisoning the agent's context. Almost nobody will submit
   this; it's literally our agent-safety research domain. It wins novelty points in the

@@ -25,6 +25,15 @@ worth keeping write a single CSV to `results/` and are marked below.
                                      high, the loop is learning the generator, not the
                                      threat.
 
+    acp_vocabulary.py                Re-derives every claim in the agentic-commerce
+                                     section from the live ACP spec: six specs not one,
+                                     a closed single-member RiskSignal enum unchanged
+                                     across every published version, no pacing vocabulary
+                                     anywhere, and Channel.type = [browser] with
+                                     BrowserInfo required. Needs network; touches nothing
+                                     else. Exists because the original claim was written
+                                     from one file out of six.
+
     why_the_attacks_score_zero.py    Why all six vectors score 0.00%. Kills the obvious
                                      off-support explanation (swapping all ten CONTROLLED
                                      columns for real fraud's values leaves recall at
