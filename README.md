@@ -40,7 +40,16 @@ the 80% is not detection. Without a real-fraud control line in the same file, th
 unfalsifiable — and this is a general property of synthetic red teams, not a defect of this
 one. [Read it here.](#what-the-arms-race-curve-actually-measures)
 
-**Three supporting results, in order of how much they cost us:**
+**And the mechanism, which is worse than the finding.** The 0% at the left end was decided
+before any attack was generated. Swap the ten columns the red team controls for real
+fraud's own values and recall stays at 0.00%; swap the sixteen columns the attack
+*inherits* from its host account and it jumps to real fraud's own 14–16%. The detector's
+entire capability lives in a block the attacker cannot touch, and the host-selection rule
+requires that block to come from an account that was **never fraudulent**. Every attack
+carries a known-good customer's fingerprint by construction. [The
+experiment.](#why-every-attack-scores-zero)
+
+**Four supporting results, in order of how much they cost us:**
 
 1. **A quarter of the detector's apparent skill was memorised entities.** Purging accounts
    that straddle the temporal split takes real-fraud recall 19.10% → 14.22%, a 25.5%
@@ -52,6 +61,10 @@ one. [Read it here.](#what-the-arms-race-curve-actually-measures)
    independently — in the `mule_fanout` ablation and in the dunning control, where flipping
    one binary column moves the false-positive rate on legitimate subscription retries from
    1.5% to 38.8%. [→](#the-confusable-class--what-card_testings-97-actually-costs)
+4. **Separability and detectability are not the same measurement.** Any two vectors are
+   told apart at AUC ≥ 0.957 by a classifier trained in seconds, while the fraud detector
+   catches all six at 0.00%. Being loud is not what gets you
+   caught. [→](#six-names-six-populations--and-that-is-the-problem)
 
 **Three things that are limitations rather than findings**, and should be read as the
 boundary of the work, not as results: linkage counts are frozen at the host's last observed
@@ -230,12 +243,10 @@ detecting actual fraud.**
 Both ends of the curve measure the generator rather than the threat, and each end fails in
 its own way:
 
-- **The `0%` at iteration 0 is not evasion.** All six vectors score 0.00% *before* the
-  optimizer runs and 0.00% *after* it runs against the un-retrained detector
-  (`scripts/audit/real_positive_anchor.py`). The optimizer has nothing to improve on. Those
-  rows sit in a region of feature space where the trees have no training data at all, so
-  they receive a low score by default rather than by design.
-- **The `80.43%` is fingerprint recognition.** Once the detector is retrained on this
+- **The `0%` at iteration 0 is not evasion, and the reason is our own host-selection
+  rule.** See [why every attack scores zero](#why-every-attack-scores-zero) below — it is
+  the most important paragraph in this file.
+- **The `80.80%` is fingerprint recognition.** Once the detector is retrained on this
   generator's output it learns the generator, and the benchmark — however carefully held
   out — was produced by the same generator.
 
@@ -247,6 +258,57 @@ whose red team is synthetic will produce a curve like the one above, and without
 real-fraud control line in the same file there is no way to tell that curve apart from a
 real advance. The curve is unfalsifiable without the control, so the control ships beside
 the headline in `results/summary.json` and `results/curve.csv`.
+
+### Why every attack scores zero
+
+All six vectors score 0.00% at a 0.1% budget *before* the optimizer runs and 0.00% *after*
+it runs against the un-retrained detector (`scripts/audit/real_positive_anchor.py`). The
+optimizer has nothing to improve on. The obvious explanation is that these rows are
+off-support — a gradient-boosted tree does not extrapolate, and 72% of `card_testing`'s rows
+sit past the training p99.9 on `velocity_1h`.
+
+**That explanation is wrong**, and `scripts/audit/why_the_attacks_score_zero.py` kills it in
+one experiment. Take the attack rows and replace all ten columns the red team controls with
+values drawn from **real fraud**. Recall stays at 0.00%. Now put the controlled columns back
+and instead replace the sixteen columns the attack *inherits* — `account_age_days`,
+`merchant_risk` and the fourteen linkage counts — with real fraud's own values:
+
+| what was swapped for real fraud's values | thr_hug | bustout | card_test | upi | mule | autopay |
+|---|---|---|---|---|---|---|
+| nothing (as generated) | 0.00% | 0.00% | 0.00% | 0.00% | 0.10% | 0.00% |
+| the 10 **controlled** columns | 0.00% | 0.00% | 0.00% | 0.00% | 0.20% | 0.00% |
+| the 16 **inherited** columns | **15.0%** | **15.0%** | 6.4% | **14.3%** | 10.1% | **16.2%** |
+| all 26 | 15.5% | 15.4% | 14.5% | 13.6% | 14.9% | 14.1% |
+
+Real fraud itself is caught **14.22%** of the time at the same threshold. Swapping the
+inherited block alone recovers essentially all of that for four of the six vectors.
+
+**So the columns the red team actually controls carry no detectable fraud signal at all,
+and the detector's entire real-fraud capability lives in a block the attacker cannot
+touch.** That block is inherited from a real account, and the host-selection rule requires
+that account to have **never been fraudulent**. Every attack row therefore carries the
+issuer-side fingerprint of a known-good customer. The detector is not failing to detect
+these attacks. It is correctly reporting that this is a clean account — which is what we
+built the row out of.
+
+That rule was adopted for anti-leakage reasons and is described further down as *belt and
+braces*. It is not belt and braces. It is the entire left-hand end of the arms-race curve,
+and it means **the `0%` was determined by a design decision made before any attack was
+generated.**
+
+**Why `card_testing` is the exception at 6.4%.** It is the only vector that does not fully
+recover when given fraudulent linkage, and the only one a detector trained on the other
+five cannot reach (12.2% held out, against 64.6% and 69.6% for `upi_collect` and
+`mule_fanout`). Its own behavioural signature — twenty to sixty sub-dollar probes seconds
+apart — is so far from anything in the training data that it actively drags the score back
+down even with fraud's context attached. It is the loudest vector in the suite and the
+hardest to see, for the same reason.
+
+**What this does not excuse.** Nothing here says the attacks are unrealistic. A real
+account takeover genuinely does inherit a clean account's history — that is what makes it
+hard. What it says is that **this benchmark cannot measure evasion**, because the 0% at the
+left end is a property of the construction rather than of the attacker's skill, and any
+improvement measured against it is measured against a floor that was placed there by hand.
 
 **What still does not explain it: stealth.** Narrowed to comparable typologies, real fraud
 spans 0.127–0.456 in distance-from-legit and is caught 0.2–23.1% of the time; the six

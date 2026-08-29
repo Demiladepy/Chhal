@@ -25,6 +25,16 @@ worth keeping write a single CSV to `results/` and are marked below.
                                      high, the loop is learning the generator, not the
                                      threat.
 
+    why_the_attacks_score_zero.py    Why all six vectors score 0.00%. Kills the obvious
+                                     off-support explanation (swapping all ten CONTROLLED
+                                     columns for real fraud's values leaves recall at
+                                     0.00%) and finds the real one: swap the sixteen
+                                     INHERITED columns instead and detectability comes
+                                     straight back. The host-selection rule is the whole
+                                     left-hand end of the arms-race curve.
+                                     -> results/inherited_block_transplant.csv,
+                                        results/card_testing_offsupport.csv
+
     vector_separability.py           Pairwise AUC between every pair of vectors on the
                                      ten controlled columns. Refutes the idea that
                                      upi_collect is a sibling of bustout (0.997), and
