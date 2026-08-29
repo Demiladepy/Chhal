@@ -106,9 +106,9 @@ with center:
         xaxis_title="caught", xaxis_range=[0, 1], height=340, margin=dict(l=10, r=10),
     )
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Recall per vector at the same 0.1% false-positive budget. "
-               "Threshold-hugging (the hero vector) stays the hardest to catch — it "
-               "mimics normal behaviour, so it sits lowest even after the loop learns.")
+    st.caption("Recall per vector at the same 0.1% false-positive budget. Every bar here "
+               "is 0.00% before the loop runs; what you are seeing is how quickly the "
+               "detector learns each generator's fingerprint once retrained on it.")
 
 # ---- RIGHT: Blue Team — the money chart ------------------------------------
 with right:
@@ -182,8 +182,9 @@ if fid:
                        "evidence the guardrail actually does work.")
     f3.metric(f"Mimicry KS vs legit ({fid.get('mimicry_vector','')})",
               f"{fid['mimicry_mean_ks_vs_legit']:.3f}",
-              help="Distribution distance of the hero vector from legitimate traffic. Low = it "
-                   "genuinely mimics normal behaviour, which is why it's the hardest to catch.")
+              help="Distribution distance of the mimicry vector from legitimate traffic. "
+                   "Read it against the noise floor: two samples of the same legit traffic "
+                   "score ~0.024 apart, so this is ~16x sampling noise, not a match.")
 
 fcol1, fcol2 = st.columns([1.3, 1])
 with fcol1:
@@ -194,9 +195,9 @@ with fcol1:
 with fcol2:
     if not fidelity.empty:
         st.caption("KS distance from legit, per vector (lower = more legit-like). "
-                   "`threshold_hugging` sits closest to normal — the stealth that makes it the "
-                   "hero vector; overt vectors sit further out **by design** (that's the fraud "
-                   "signal, not a defect).")
+                   "Narrowed to comparable typologies, **real** fraud spans 0.13–0.46 on this "
+                   "metric and is caught 10–22% of the time; these vectors span 0.27–0.51 and "
+                   "are caught 0%. Distance from legit is not what separates them.")
         st.dataframe(fidelity.round(3), height=240, use_container_width=True)
 
 st.caption("Distances are measured against real IEEE-CIS legitimate traffic, and each attack "

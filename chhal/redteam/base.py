@@ -8,7 +8,7 @@ Why a vector describes a campaign rather than a pile of rows
 ------------------------------------------------------------
 `velocity_1h`, `velocity_24h`, `time_since_last_txn_min` and `amount_to_avg_ratio` are
 four views of one timeline, so sampling them independently produces transactions that
-cannot exist. It did: 100% of the hero vector's rows claimed activity in the last 24
+cannot exist. It did: 100% of `threshold_hugging`'s rows claimed activity in the last 24
 hours while also claiming the previous transaction was days ago, against 0% of real
 traffic. A judge who checks that once stops believing the rest.
 

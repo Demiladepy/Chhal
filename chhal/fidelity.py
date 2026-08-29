@@ -18,7 +18,7 @@ them honestly:
 
   2. **Per-vector distribution distance from legitimate traffic** (two-sample KS vs legit).
      Fraud is *supposed* to differ from normal — that difference is the fraud signal, not a
-     simulation defect. The insight the number captures: the hero vector `threshold_hugging`
+     simulation defect. The insight the number captures: `threshold_hugging`
      sits **closest to legit** (it mimics normal behaviour — that is why it is hardest to
      catch), while overt vectors (`bustout`, `card_testing`) sit further out by design. Low
      KS on the mimicry vector is a quantified proof the mimicry is real.

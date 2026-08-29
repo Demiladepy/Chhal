@@ -24,7 +24,7 @@ Three variants, one detector, one operating point:
     mule_fanout_known_payee          is_new_beneficiary forced to 0, otherwise identical
     mule_fanout_always_new_payee     is_new_beneficiary forced to 1 — the old behaviour
 
-The first pair asks whether per-victim mimicry is doing anything, or whether the hero
+The first pair asks whether per-victim mimicry is doing anything, or whether the mimicry
 vector would be just as hard to catch drawing from the population. The second pair asks
 whether the detector can see coordination — and the third exists to answer the obvious
 follow-up: if not coordination, then what IS it catching?
@@ -40,7 +40,7 @@ Two things this script learned the hard way, and now guards against:
   which means any one of those numbers, quoted alone, would have been a story invented
   from noise. Every variant is therefore run across SEEDS, and what gets reported is the
   mean with its spread.
-* One operating point is not enough. At a 0.1% budget the hero vector and its ablation
+* One operating point is not enough. At a 0.1% budget the mimicry vector and its ablation
   both score exactly zero, so the comparison is floored and says nothing. Recall is
   reported at three budgets, and a comparison is only read where it is not against a wall.
 
@@ -74,12 +74,12 @@ RESULTS = Path(__file__).resolve().parents[1] / "results"
 
 
 def _variants():
-    hero = ALL_VECTORS[0]
+    mimicry = ALL_VECTORS[0]
     mf = [V for V in ALL_VECTORS if V.vector_id == "mule_fanout"][0]
 
-    class NoMimicry(hero):
+    class NoMimicry(mimicry):
         vector_id = "threshold_hugging_no_mimicry"
-        temporal = replace(hero.temporal, mimic_host=False)
+        temporal = replace(mimicry.temporal, mimic_host=False)
 
     class Uncoordinated(mf):
         vector_id = "mule_fanout_uncoordinated"
@@ -110,7 +110,7 @@ def _variants():
             d["is_new_beneficiary"] = np.ones(n, int)
             return d
 
-    return [hero, NoMimicry, mf, Uncoordinated, KnownPayee, AlwaysNewPayee]
+    return [mimicry, NoMimicry, mf, Uncoordinated, KnownPayee, AlwaysNewPayee]
 
 
 def _one_seed(base, seed: int):
@@ -190,7 +190,7 @@ def main() -> None:
     for label, off, on in comparisons:
         # Read each comparison where it is most SENSITIVE, not where recall is highest:
         # at a loose budget the mule variants all sit near saturation and any real
-        # difference is squeezed flat, while at a tight one the hero variants are both
+        # difference is squeezed flat, while at a tight one the mimicry variants are both
         # on the floor. Picking by signal-to-noise avoids choosing either wall.
         scored = [(f,) + delta(off, on, f) for f in FPRS]
         best, m, sem = max(scored, key=lambda x: abs(x[1]) / (x[2] + 1e-9))

@@ -27,7 +27,7 @@ defense."* So Chhal is **one closed loop**, and the loop itself is the demo.
 
 ---
 
-## The money chart: two honest lines
+## The money chart: three lines, and the third one is the finding
 
 The single result that proves novelty, efficacy, and the closed loop at once — and the
 one a judge will challenge as *"circular."* It isn't. We plot **two** things and keep them
@@ -42,11 +42,16 @@ separate:
   against the *current* detector and holds it out. This line stays volatile — the red team
   keeps finding new evasions the just-retrained model partly misses. The **gap** between the
   lines is the honest, unfinished arms race.
+- **Real IEEE-CIS fraud (the grey control line).** The same detector, the same threshold,
+  scored against the real frauds in the held-out test split — a population the loop never
+  touches. This line is the reason the other two can be believed or disbelieved, and it is
+  the one that carries the finding below.
 
-**No leakage:** the base split is temporal and frozen before any attack is injected; the
-benchmark and pressure attacks touch neither; the train/held-out split is by campaign, not
-by row; and every run writes a **computed** leakage audit into `results/summary.json`
-rather than asking you to believe this sentence.
+**No leakage:** the base split is temporal, carries a **7-day delay period** between train
+and test, and **purges every account that appears on both sides** before any attack is
+injected; the benchmark and pressure attacks touch neither split; the train/held-out split
+is by campaign, not by row; and every run writes a **computed** leakage audit into
+`results/summary.json` rather than asking you to believe this sentence.
 
 ### Measured where a payments team would actually run it
 
@@ -57,16 +62,17 @@ flattered by an enormous true-negative pile: 0.9999 there is unremarkable. So th
 is **recall at a fixed FPR** and **PR AUC** (average precision), with the 0.5-threshold
 numbers kept only for comparison.
 
-Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, ~78s):
+Full run, 8 iterations on real IEEE-CIS (`scripts/run_loop.py`, 80s), on the split with the
+delay period and the entity purge applied — 442,905 train / 76,617 test:
 
 | metric | baseline | after the loop | budget realised |
 |---|---|---|---|
-| recall @ **0.1%** of legit flagged | 0.00% | **84.88%** | 0.0996% |
-| recall @ 0.5% | 0.32% | 89.68% | 0.4995% |
-| recall @ 1.0% | 0.44% | 91.08% | 0.9352% |
-| **PR AUC** | 0.0198 | **0.9272** | — |
-| alert rate, real traffic only | — | 0.677% | — |
-| alert rate, scored mixture | — | 1.561% | — |
+| recall @ **0.1%** of legit flagged | 0.00% | **80.80%** | 0.0998% |
+| recall @ 0.5% | 0.13% | 91.07% | 0.4989% |
+| recall @ 1.0% | 0.13% | 93.10% | 0.9992% |
+| **PR AUC** | 0.0313 | **0.9508** | — |
+| alert rate, real traffic only | — | 0.774% | — |
+| alert rate, scored mixture | — | 3.279% | — |
 
 The last column is there because a threshold can quote a budget it does not honour. A
 gradient-boosted ensemble emits large blocks of identical scores, and a quantile can land
@@ -76,26 +82,43 @@ legitimate traffic. `threshold_for_fpr` now takes the lowest score that actually
 every run writes the realised rate into `results/summary.json` so it can be checked rather
 than trusted.
 
-The two alert rates are also separate on purpose. The 1.561% divides by the scored mixture
+The two alert rates are also separate on purpose. The 3.279% divides by the scored mixture
 — real legitimate traffic *plus however many attacks this run generated* — so it moves with
 a config knob: the same detector reported 0.16%, 0.80% and 3.19% as `benchmark_per_vector`
-went 100 → 500 → 2000. The 0.677% is measured on the real test set alone and is the one an
+went 100 → 500 → 2000. The 0.774% is measured on the real test set alone and is the one an
 ops team would staff against.
 
-For comparison, the naive 0.5 cutoff on the same run: F1 0.0013 → 0.6424, ROC AUC 0.9937, FP on
-legit 1.66%. The ROC number is the one to distrust.
+For comparison, the naive 0.5 cutoff on the same run: F1 0.0023 → 0.8808, ROC AUC 0.9936, FP on
+legit 0.71%. The ROC number is the one to distrust.
 
 The baseline catching almost nothing is not a broken detector — the benchmark attacks
 were optimised specifically to evade it, which is the optimizer doing its job.
 
 The claim that survives scrutiny is not this curve. It is the leave-one-out one, and it
-is much weaker: **55.0% on an attack family never seen in any form**, against 73.6% on
-families the detector was trained on — an 18.6-point generalisation gap
-(`scripts/generalisation_check.py`). Per family: `upi_collect` 74.8%, `bustout` 59.4%,
-`mule_fanout` 58.2%, `card_testing` 45.2%, and the mimicry vector `threshold_hugging`
-**37.4%**, still the weakest of the five. A detector trained on four fraud families does not thereby understand the
-fifth, and the stealthier the fifth is, the less it understands. That is the honest
-state of this system and the most useful thing in this README.
+is much weaker: **43.1% on an attack family never seen in any form**, against 66.1% on
+families the detector was trained on — a **23.0-point** generalisation gap
+(`scripts/generalisation_check.py`, six vectors, post-purge split). Per family, held out:
+
+| held out | recall if trained on it | recall never seen |
+|---|---|---|
+| `mule_fanout` | 60.4% | 69.6% |
+| `upi_collect` | 61.0% | 64.6% |
+| `bustout` | 64.2% | 51.4% |
+| `threshold_hugging` | 73.2% | 36.0% |
+| `autopay_mandate` | 77.7% | 24.6% |
+| `card_testing` | 59.9% | **12.2%** |
+
+A detector trained on five fraud families does not thereby understand the sixth. But the
+ordering is not the one an earlier version of this file predicted — it claimed the
+stealthiest vector generalises worst, and that is now false. **`card_testing`, the loudest
+and most separable vector in the suite (KS 0.513, 44.6× the noise floor), is the one the
+detector fails hardest to reach when it has never seen it.** Distance from legitimate
+traffic does not predict transfer here any better than it predicts detection.
+
+Two vectors — `mule_fanout` and `upi_collect` — score *higher* unseen than seen. That is
+not a good sign either: it means the other five carry enough of their signature that
+training on the vector itself adds nothing, which is what a shared generator fingerprint
+looks like from the inside.
 
 An earlier version of this file reported 88.7% here. That number was an artifact: the
 evasion optimizer used to perturb four derived timeline features as independent scalars,
@@ -108,6 +131,47 @@ Numbers vary by seed. Every ± in this README is the standard error of a paired 
 difference over five seeds, not the spread of a single run — see
 [the ablation](#two-of-these-do-something-the-other-three-do-not--and-one-ablation-that-did-not-go-our-way)
 for what happened the one time we quoted a single-seed number.
+
+### What the arms-race curve actually measures
+
+The table above is the least trustworthy thing in this README, and the grey control line is
+why. Run the same eight iterations and watch both numbers:
+
+| iteration | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|---|
+| **synthetic attack recall** | 0.00% | 54.53% | 65.20% | 71.07% | 73.23% | 79.67% | 81.10% | 80.60% | **80.80%** |
+| **real IEEE-CIS fraud recall** | 14.22% | 16.44% | 15.89% | 15.78% | 14.22% | 15.60% | 14.68% | 13.52% | **15.02%** |
+
+Attack recall climbs eighty points. Real-fraud recall wanders inside a 2.9-point band and
+ends where it started. **Eight rounds of adversarial retraining bought zero improvement in
+detecting actual fraud.**
+
+Both ends of the curve measure the generator rather than the threat, and each end fails in
+its own way:
+
+- **The `0%` at iteration 0 is not evasion.** All six vectors score 0.00% *before* the
+  optimizer runs and 0.00% *after* it runs against the un-retrained detector
+  (`scripts/audit/real_positive_anchor.py`). The optimizer has nothing to improve on. Those
+  rows sit in a region of feature space where the trees have no training data at all, so
+  they receive a low score by default rather than by design.
+- **The `80.43%` is fingerprint recognition.** Once the detector is retrained on this
+  generator's output it learns the generator, and the benchmark — however carefully held
+  out — was produced by the same generator.
+
+The control rules out the charitable reading. If the loop were teaching the detector
+something general about fraud-shaped behaviour, the grey line would move. It does not.
+
+This is not a bug to be fixed before publishing; it is the result. Any closed red/blue loop
+whose red team is synthetic will produce a curve like the one above, and without a
+real-fraud control line in the same file there is no way to tell that curve apart from a
+real advance. The curve is unfalsifiable without the control, so the control ships beside
+the headline in `results/summary.json` and `results/curve.csv`.
+
+**What still does not explain it: stealth.** Narrowed to comparable typologies, real fraud
+spans 0.127–0.456 in distance-from-legit and is caught 0.2–23.1% of the time; the six
+vectors span 0.270–0.483 — overlapping range — and are caught 0.00% of the time. Being
+close to legitimate traffic is not what makes these attacks invisible. Being invented is.
+See [`scripts/audit/narrowness_matched_ks.py`](scripts/audit/narrowness_matched_ks.py).
 
 ---
 
@@ -176,18 +240,38 @@ Two tracks, kept explicitly separate (fudging this loses feasibility points):
 
 **★ Live-loop vectors** (emit transaction features, flow through the detector, *are* the loop):
 
-| Vector | Idea | Campaign shape | recall @ 0.1% FPR |
+| Vector | Idea | Campaign shape | recall @ 0.1% FPR, round 8 |
 |---|---|---|---|
-| `threshold_hugging` **(hero)** | Per-victim mimicry: the campaign is sized, paced **and clocked** from the compromised card's **own** history, so nothing about it is anomalous *for that account* | 3-9 txns at the victim's own cadence, at the victim's own hours, spending the victim's own amounts | **66.6%** |
-| `upi_collect` | fraudulent UPI collect-request + rapid drain (India rail) | 3-7 hops, 30s-10min apart, each smaller as funds run out | 91.2% |
-| `mule_fanout` | One operator, many mule accounts, one window — the vector GenAI actually changes, because what it makes cheap is *scale* | 2-5 transfers per account, every account firing inside the same 6 hours | 87.0% |
-| `bustout` | GenAI synthetic identity ages a clean account, then busts out in a burst | quiet for days, then 8-25 txns minutes apart, amounts escalating 1.6× | 83.4% |
-| `card_testing` | Agentic BIN/card probing sized to stay under velocity limits | 20-60 micro-probes, 2s-2min apart | 96.2% |
+| `threshold_hugging` | Per-victim mimicry: the campaign is sized, paced **and clocked** from the compromised card's **own** history, so nothing about it is anomalous *for that account* | 3-9 txns at the victim's own cadence, at the victim's own hours, spending the victim's own amounts | 58.2% |
+| `autopay_mandate` | The inverse of a burst: a recurring-mandate hijack that pays monthly, flat, and trips no velocity feature | 4-8 txns at monthly cadence, near-constant amount | 63.2% |
+| `mule_fanout` | One operator, many mule accounts, one window — the vector GenAI actually changes, because what it makes cheap is *scale* | 2-5 transfers per account, every account firing inside the same 6 hours | 87.8% |
+| `upi_collect` | fraudulent UPI collect-request + rapid drain (India rail) | 3-7 hops, 30s-10min apart, each smaller as funds run out | 89.2% |
+| `bustout` | GenAI synthetic identity ages a clean account, then busts out in a burst | quiet for days, then 8-25 txns minutes apart, amounts escalating 1.6× | 89.4% |
+| `card_testing` | Agentic BIN/card probing sized to stay under velocity limits | 20-60 micro-probes, 2s-2min apart | 97.0% |
+
+**Every one of these is 0.00% before the loop runs, and 0.00% after the optimizer runs on
+the un-retrained detector.** The column above is what the detector reaches after eight
+rounds of being retrained on this generator's output. Read it as a measurement of the
+generator, not of the threat — see [What the arms-race curve actually
+measures](#what-the-arms-race-curve-actually-measures).
 
 Campaign shapes are not decoration — they are how the behavioural features are produced.
 See [Attacks are campaigns, not rows](#attacks-are-campaigns-not-rows).
 
 ### Two of these do something the other three do not — and one ablation that did not go our way
+
+**`threshold_hugging` is a published attack, and we claim the measurement, not the idea.**
+Carminati, Polino, Continella, Lanzi, Maggi and Zanero, *Security Evaluation of a Banking
+Fraud Analysis System*, **ACM Transactions on Privacy and Security 21(3), 2018** — mimicry
+attacks against the Banksealer detector, evaluated on real data from a large Italian bank,
+with the attacker's variables being exactly the transaction **amount** and **timestamp**.
+<https://conand.me/publications/carminati-bankingfraud-2018.pdf>. The follow-up (RAID 2020,
+<https://www.usenix.org/system/files/raid20-carminati.pdf>) states the architectural rule
+this repo's `DERIVED_FEATURES` boundary implements — *"the features that can be fully
+manipulated by the attacker are the amount and the timestamp"*, and an attacker *"needs to
+inject in the banking system raw transactions (not aggregated ones)"*. What is ours is the
+per-victim quantile calibration below, the fixed-FPR measurement, and the ablation that
+prices it.
 
 **`threshold_hugging` reads its bands off the victim, not off the population.** Every
 vector's bands are quantile levels rather than raw values, which makes them portable. But
@@ -208,38 +292,61 @@ operating points, each variant differing from its control in exactly one thing.
 
 | switched on | costs the detector | read at | verdict |
 |---|---|---|---|
-| per-victim mimicry | **−0.9 ± 1.0** pts | 0.1% FPR | inside the noise |
-| coordination | **+2.5 ± 0.8** pts | 1% FPR | clears 2 SEM, but confounded |
-| `is_new_beneficiary` at all | **−22.9 ± 3.4** pts | 0.1% FPR | clears 2 SEM |
-| …and hard-coding it to 1 | **−5.6 ± 3.1** pts @0.1%, **−1.8 ± 0.4** @5% | both | clears 2 SEM |
+| per-victim mimicry | **+2.3 ± 2.6** pts | 5% FPR | inside the noise |
+| coordination | **−1.0 ± 0.6** pts | 5% FPR | inside the noise |
+| `is_new_beneficiary` at all | **−25.0 ± 3.2** pts | 0.1% FPR | clears 2 SEM |
+| …and hard-coding it to 1 | **−8.8 ± 4.9** pts | 0.1% FPR | inside the noise |
 
 (± is the standard error of the paired per-seed difference, not the spread of one run. A
 positive number is recall the detector *loses* when the choice is switched on, so it is a
 gain for the attacker; a negative one means the choice makes the attack easier to catch.)
 
-**The last two rows are the clean result, and they are not the one we set out to prove —
-they run against us.** The detector catches `mule_fanout` largely on one binary column:
-turn `is_new_beneficiary` off entirely and recall falls 22.9 points at a 0.1% budget.
+**The third row is the clean result, and it is not the one we set out to prove — it runs
+against us.** The detector catches `mule_fanout` substantially on one binary column: turn
+`is_new_beneficiary` off entirely and recall falls **25.0 ± 3.2** points at a 0.1% budget.
 Some of that is legitimate — a mule fan-out really does send money somewhere new, and a
 detector is entitled to use that.
 
+**But "off entirely" is the wrong counterfactual, and asking the right one changes the
+answer.** Zeroing the column on every row is itself a determinism the detector can read,
+which is the same mistake the fourth row exists to price. Move the *rate* instead — from
+the vector's 0.75 to the legitimate base rate of 0.552, still drawn per row — and the cost
+is **+4.3 ± 1.3** points across three seeds (`scripts/mule_alpha_sweep.py`). So the vector
+does **not** rest on that column: it rests on the column being *nearly always* set, and
+that is a much smaller and much more defensible dependence.
+
 The fourth row is the part that was ours. `is_new_beneficiary` used to be hard-coded to
 **1 on 100% of rows** in four of the five vectors, and that determinism was worth a
-further 5.6 points on top of the genuine signal. In real IEEE-CIS traffic the flag sits
-on 41.2% of legitimate transactions and 35.7% of frauds — slightly *less* common in real
+further 8.8 ± 4.9 points on top of the genuine signal — which on the post-purge split no
+longer clears its own error bars, so it is reported and not claimed. In real IEEE-CIS traffic the flag sits
+on 55.2% of legitimate transactions and 42.2% of frauds — *less* common in real
 fraud than in ordinary spending — so a vector that sets it every single time had painted
 a target on itself. It is now a per-vector probability drawn from each vector's story
-(0.30 for the hero, 0.75 for the mule, up to 0.90 for card testing), and the variant that
-restores the old behaviour is kept in the ablation precisely so this row can exist. Those
-5.6 points were recall we were never earning.
+(0.30 for `threshold_hugging`, 0.75 for the mule, up to 0.90 for card testing), and the variant that
+restores the old behaviour is kept in the ablation precisely so this row can exist.
 
-**Coordination clears its error bars but the comparison is confounded**, and we would
-rather say so than bank it: a coordinated batch draws hosts that were live shortly before
-its window, so the two mule variants do not share a host population. The 2.5 points are
-timing *and* host mix, and this design cannot separate them.
+**Coordination no longer clears its error bars, and an earlier version of this file said
+it did.** On the pre-purge split it read +2.5 ± 0.8 points at a 1% budget and was written
+up as clearing 2 SEM with a confound attached. On the split with the delay period and the
+entity purge it reads **−1.0 ± 0.6** points — the wrong sign and inside the noise. The
+confound was real and is now moot: a coordinated batch draws hosts that were live shortly
+before its window, so the two mule variants never shared a host population, and this design
+could not have separated timing from host mix even if the difference had held.
 
-**Per-victim mimicry does not survive its own ablation here.** 0.9 ± 1.0 points is not a
-finding. The hero vector sits near the floor with mimicry and without it, so a single-pass
+**Nor can the coordination be jittered away, and the reason is the point of the vector.**
+`scripts/mule_alpha_sweep.py` sweeps an evasion budget α ∈ [0, 0.5] over the two operations
+that have an analogue here. Widening the firing window from 6 to 30 hours moves recall
+18.1% → 19.8% (inside the noise). Padding each mule with decoy transfers, 5 → 15 per
+account, moves it 15.0% → 23.8% — the wrong way, because extra transactions add velocity
+signal in a feature space that cannot see the network they belong to. The recipe comes from
+**arXiv 2607.27370, which is Ethereum Sybil-cluster discovery via Gzip compression
+distance, not a mule paper**; applying it here is a cross-domain translation and its third
+operation, permutation, has no analogue at all, because there is no counterparty column and
+therefore no graph to permute. That absence is what `mule_fanout` was built to measure,
+arriving from the other direction.
+
+**Per-victim mimicry does not survive its own ablation here.** 2.3 ± 2.6 points is not a
+finding. `threshold_hugging` sits near the floor with mimicry and without it, so a single-pass
 detector cannot tell them apart — the loop's per-vector recall does differ, but eight
 rounds of adaptation is not a controlled comparison and we are not going to quote it as
 one. The mechanism is still the right one on the merits; the evidence that it *matters* is
@@ -252,6 +359,39 @@ quoted alone, would have been a story invented from noise. That is a warning abo
 per-vector number in this README quoted to one decimal place, and the reason
 `scripts/robustness.py` exists.
 
+### The confusable class — what `card_testing`'s 97% actually costs
+
+`card_testing` is the easiest vector in the suite and the number is not impressive on its
+own, because the cheapest way to reach it is to flag every repeated same-amount attempt on
+a card. That is also what a **dunning run** looks like: when a subscription charge soft-
+declines, the processor retries it on a ladder over the following days, same amount, same
+merchant, low success rate. Stripe's own documentation warns that these "can look like card
+testing".
+
+So `chhal/redteam/vectors.py` carries a `Dunning` population — legitimate, `is_fraud = 0`,
+deliberately **not** in `ALL_VECTORS`, never optimized against the detector, never trained
+on. `scripts/dunning_control.py` scores it at the same 0.1% threshold, after three rounds
+of adaptation on the full attack suite, over three seeds:
+
+| population | | flagged at a 0.1% budget |
+|---|---|---|
+| `card_testing` | attack | **83.4% ± 0.3** caught |
+| dunning, payee record reset | legit | **38.8% ± 6.6** false positive |
+| dunning, known payee | legit | 1.5% ± 0.4 false positive |
+| ordinary IEEE-CIS legit traffic | legit | 0.100% |
+
+Read the middle rows. A detector at this operating point declines **1.5%** of a merchant's
+subscription retries in the ordinary case — fifteen times the base rate — and **38.8%** of
+them whenever a card update has reset the payee record, which is 389× the base rate and an
+outage in everything but name.
+
+And the gap between those two rows is the finding: they differ by a factor of **25**, and
+the only thing that differs between them is `is_new_beneficiary`. **The detector is not
+separating card testing from dunning by the shape of the retry sequence. It is reading who
+is being paid.** That is the same single-column dependence the `mule_fanout` ablation found,
+in a second vector, measured a second way — and it is the reason a card-testing recall
+number should never be quoted without this table beside it.
+
 ---
 
 ## The constrained evasion optimizer — the novel core
@@ -263,6 +403,30 @@ score. Every candidate must obey **(a)** business rules (velocity caps, valid am
 **(b)** the realistic manifold (feature quantile bounds from real data), and **(c)**
 attacker control (issuer-side signals like `merchant_risk` are off-limits). See
 [`chhal/optimizer.py`](chhal/optimizer.py).
+
+---
+
+## What is not ours
+
+Six things in this repo look like contributions and are not. Naming them here is cheaper
+than having a reviewer name them for us, and it makes the short list of what *is* ours
+legible.
+
+| Borrowed | From |
+|---|---|
+| **Measuring recall at a fixed false-positive budget** rather than at a 0.5 cutoff | Le Borgne, Siblini, Lebichot & Bontempi, *Reproducible Machine Learning for Credit Card Fraud Detection*, Ch. 4 — the standard protocol for a 3.5%-prevalence problem |
+| **CP@k / precision-at-k as the operational metric** | Dal Pozzolo et al., ULB–Worldline; it is how a real alert queue is scored |
+| **Anchoring a distance statistic to its own noise floor** | Sajja, arXiv:2604.13125 (Apr 2026) |
+| **Leave-one-attack-out generalisation testing** | standard practice in the intrusion-detection literature, decades old |
+| **The immutable-vs-attacker-controlled feature split** | Carminati et al., RAID 2020 — *"the features that can be fully manipulated by the attacker are the amount and the timestamp"* |
+| **The closed red-team / blue-team retraining loop itself** | a commodity pattern by 2026; the interesting question is no longer whether you can build one |
+| **Per-victim mimicry as an attack idea** | Carminati et al., ACM TOPS 21(3) 2018 |
+
+What is ours is narrower and, we think, more useful: the **measurement** that both ends of
+the arms-race curve track the generator rather than the threat, with the real-fraud control
+line sitting in the same CSV as the headline; the **entity-level purge** that showed a
+quarter of the detector's apparent skill was memorised accounts; and the **finding** that
+distance-from-legit does not predict detection across provenance boundaries.
 
 ---
 
@@ -284,23 +448,39 @@ A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py))
   the plausibility envelope, they don't just float freely inside it.
 - **Per-vector KS distance from legit traffic**, reported two ways:
 
-| vector | KS over all 26 features | KS over the 10 the red team controls |
-|---|---|---|
-| `threshold_hugging` **(hero)** | **0.148** | **0.250** |
-| `mule_fanout` | 0.215 | 0.364 |
-| `upi_collect` | 0.218 | 0.423 |
-| `bustout` | 0.249 | 0.485 |
-| `card_testing` | 0.331 | 0.530 |
+| vector | KS over all 26 features | KS over the 10 the red team controls | × the noise floor |
+|---|---|---|---|
+| `autopay_mandate` | 0.158 | 0.270 | 16.1× |
+| `threshold_hugging` | 0.175 | 0.284 | 15.8× |
+| `mule_fanout` | 0.208 | 0.335 | 31.9× |
+| `upi_collect` | 0.215 | 0.381 | 25.6× |
+| `bustout` | 0.232 | 0.410 | 34.7× |
+| `card_testing` | 0.270 | 0.483 | 43.1× |
 
   The second column exists because the first one flatters us and it is worth saying why:
   16 of the 26 features are inherited whole from a real host account, so they match
   legitimate traffic by construction and each contributes a KS near zero. Averaging them
-  in is 62% free passes. The claim that survives either way is the **ordering** — the
-  hero vector sits closest to legit in both columns, which is exactly why it is hardest
-  to catch, and the overt vectors sit further out **by design**. That separation is the
-  fraud signal, not a defect.
+  in is 62% free passes.
 
-`results/fidelity.png` overlays the mimicry vector on a 6,000-row sample of the 142,535
+  The third column exists because a raw KS statistic has no zero. Two 500-row samples of
+  the *same* legitimate traffic score 0.024 apart on average, purely from sampling noise,
+  so "KS = 0.15" means nothing until it is divided by that floor. Rescaled per feature and
+  per sample size, two legit draws land at **1.4×** and the six vectors at **16–43×**. On
+  the ten columns the red team actually sets, **one feature out of sixty** falls within
+  twice the noise floor of legitimate traffic.
+
+  **The ordering claim that used to sit here — closest to legit therefore hardest to
+  catch — is withdrawn.** It does not survive the measurement: at 0.1% FPR every vector in
+  this table is caught **0.00%** of the time, from 0.270 to 0.483, so distance from legit
+  is not what determines detection here. Narrowed to comparable typologies, real fraud
+  spans **0.127–0.456** on the same metric — overlapping this table almost exactly — and is
+  caught **0.2–23.1%** of the time. Same distance band, opposite outcome. What separates
+  them is not stealth; it is that one population is in the training distribution and the
+  other was invented. See [What the arms-race curve actually
+  measures](#what-the-arms-race-curve-actually-measures) and
+  [`scripts/audit/narrowness_matched_ks.py`](scripts/audit/narrowness_matched_ks.py).
+
+`results/fidelity.png` overlays the mimicry vector on a 6,000-row sample of the 73,156
 real legitimate test transactions. Every distance on this page is a distance from real
 legitimate traffic — see [Data](#data--real-not-invented).
 
@@ -551,10 +731,31 @@ q0.5%/q99.5% envelope would silently rewrite the issuer's own view of the card.
 
 - Only accounts whose every observed transaction is legitimate may host a campaign — a
   fraudulent account's rows carry label information.
-- Evaluation pools exclude any account seen in training. 34.8% of test accounts also have
-  transactions before the temporal cut; excluding them removes the argument entirely.
-  (Belt and braces: hosts are all-legitimate, so recognising one would push an attack
-  toward *legit* and make detection harder, not easier.)
+- **The base split carries a 7-day delay period.** Before this, the gap between the last
+  train transaction and the first test transaction was **60 seconds**. A model trained
+  right up to the instant it is evaluated is not being asked the question a deployed model
+  faces, which is what it knows about tomorrow. 18,550 rows are held out to create the gap.
+- **Straddling accounts are purged from test entirely.** 52,468 of 129,085 post-embargo
+  test rows — **40.6%**, across 21,337 accounts — sat on accounts the detector also trains
+  on. A temporal split alone does not prevent this: an account that transacts on both sides
+  of the cut lands in both halves, and every behavioural feature here is computed *within*
+  an account. Those rows are not unseen customers; they are memorised ones, scored a little
+  later. **Removing them costs 25.5% of the detector's measured skill on real fraud**
+  (19.10% → 14.22% recall at a 0.1% budget) — which is the leakage measurement, and the
+  reason it is published rather than fixed quietly.
+- Evaluation pools additionally exclude any account seen in training when a campaign is
+  mounted. (Belt and braces: hosts are all-legitimate, so recognising one would push an
+  attack toward *legit* and make detection harder, not easier.)
+- **`merchant_risk` is encoded causally.** It is a smoothed historical fraud rate per
+  merchant bucket, and it used to be computed with a random 5-fold out-of-fold scheme.
+  That stops a row encoding *itself*, which is the leak everyone checks for, and on
+  temporally ordered data it leaves a second one open: the other four folds span the whole
+  train window, so a January transaction was scored with a merchant risk number built
+  partly from June. It is now an expanding window over transaction time — each row sees
+  only what had already happened in its bucket — with simultaneous rows excluded as a
+  block. Fixing it cost **nothing measurable** (real-fraud recall 14.22% before and after),
+  which is worth stating: the detector was not leaning on that leak, so the 25.5% above is
+  the entity purge alone.
 - The train/held-out split is by **campaign**, not by row. A campaign is one compromised
   account and its 3-60 transactions, every one of them carrying that account's age,
   merchant history and fourteen linkage counts — so splitting rows at random left 98.1%
@@ -603,7 +804,7 @@ exist — and it did:
 
 | | violates the 1h rule | 1h count > 24h count |
 |---|---|---|
-| `threshold_hugging` (hero vector), before | 69.9% | — |
+| `threshold_hugging`, before | 69.9% | — |
 | every vector after `render()`, but **through the old optimizer** | 59.2 – 93.2% | 13.4 – 42.4% |
 | real IEEE-CIS traffic | 0% | 0% |
 | **every vector, through the optimizer, now** | **0%** | **0%** |

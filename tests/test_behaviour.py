@@ -1,7 +1,7 @@
 """Tests for timeline-derived features — the defect Fix 2 existed to remove.
 
 Before campaigns, `velocity_*`, `time_since_last_txn_min` and `amount_to_avg_ratio` were
-sampled independently, so 100% of the hero vector's rows were physically impossible:
+sampled independently, so 100% of `threshold_hugging`'s rows were physically impossible:
 activity claimed inside the last 24 hours while the previous transaction was days ago.
 Real traffic violated it 0% of the time, because real traffic is derived from timelines.
 These tests keep it that way.

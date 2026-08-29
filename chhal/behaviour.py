@@ -4,7 +4,8 @@
 not independent numbers. They are four views of the same underlying thing: a sequence of
 transactions by one account, in time order. Sampling them separately produces rows that
 cannot exist — a row claiming four transactions in the last hour while also claiming the
-previous one was five hours ago. Before this module existed, 100% of the hero vector's
+previous one was five hours ago. Before this module existed, 100% of
+`threshold_hugging`'s
 rows violated that constraint, against 0% of real traffic, because real traffic is
 derived from timelines and the attacks were not.
 

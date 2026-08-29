@@ -226,7 +226,7 @@ class EvasionOptimizer:
         vector that can be re-timed into another vector is not a vector.
 
         Bounded PER CAMPAIGN, not per batch, and the difference is not cosmetic. Once
-        the hero vector started reading its cadence off each victim, one batch held
+        `threshold_hugging` started reading its cadence off each victim, one batch held
         campaigns pacing minutes apart and campaigns pacing weeks apart; a single
         batch-wide 95th percentile handed the fast ones the slow ones' ceiling, and the
         optimizer walked a victim who transacts daily out to a median gap of 28 DAYS.

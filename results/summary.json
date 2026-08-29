@@ -1,54 +1,58 @@
 {
   "data_source": "ieee",
   "train_rows": 442905,
-  "test_rows": 147635,
+  "test_rows": 76617,
   "operating_points": {
     "recall_at_fpr=0.001": {
       "baseline": 0.0,
-      "final": 0.8488
+      "final": 0.808
     },
     "recall_at_fpr=0.005": {
-      "baseline": 0.0032,
-      "final": 0.8968
+      "baseline": 0.0013,
+      "final": 0.9107
     },
     "recall_at_fpr=0.01": {
-      "baseline": 0.0044,
-      "final": 0.9108
+      "baseline": 0.0013,
+      "final": 0.931
     }
   },
-  "baseline_pr_auc": 0.0198,
-  "final_pr_auc": 0.9272,
-  "final_alert_rate": 0.01561,
-  "final_alert_rate_on_real_traffic": 0.00677,
+  "real_fraud_recall_at_fpr_0.001": {
+    "baseline": 0.1422,
+    "final": 0.1502
+  },
+  "baseline_pr_auc": 0.0313,
+  "final_pr_auc": 0.9508,
+  "final_alert_rate": 0.03279,
+  "final_alert_rate_on_real_traffic": 0.00774,
   "realised_fpr": {
-    "budget=0.001": 0.000996,
-    "budget=0.005": 0.004995,
-    "budget=0.01": 0.009352
+    "budget=0.001": 0.000998,
+    "budget=0.005": 0.004989,
+    "budget=0.01": 0.009992
   },
   "leakage_audit": {
-    "benchmark_rows": 2500,
+    "benchmark_rows": 3000,
     "benchmark_rows_in_training_pool": 0,
     "pressure_rows_in_training_pool": 0,
-    "benchmark_host_accounts": 367,
+    "benchmark_host_accounts": 454,
     "benchmark_host_accounts_seen_in_train": 0
   },
   "naive_threshold_0.5": {
-    "baseline_f1": 0.0013,
-    "final_f1": 0.6424,
-    "final_recall": 0.9212,
-    "final_roc_auc": 0.9937,
-    "final_fp_rate_on_legit": 0.0166
+    "baseline_f1": 0.0023,
+    "final_f1": 0.8808,
+    "final_recall": 0.9227,
+    "final_roc_auc": 0.9936,
+    "final_fp_rate_on_legit": 0.0071
   },
   "fidelity": {
     "on_manifold_rate": 1.0,
-    "derived_on_manifold_rate": 0.9313,
+    "derived_on_manifold_rate": 0.9463,
     "mimicry_vector": "threshold_hugging",
-    "on_manifold_rate_all_features": 0.9817,
-    "rows_fully_on_manifold": 0.6724,
+    "on_manifold_rate_all_features": 0.984,
+    "rows_fully_on_manifold": 0.6847,
     "mimicry_vector_note": "mean_ks_vs_legit averages 26 features, 16 of which are inherited from a real host and match by construction; mean_ks_controlled is the same distance over the columns the red team actually sets.",
-    "mimicry_mean_ks_vs_legit": 0.1482,
-    "mimicry_mean_ks_controlled": 0.2501,
-    "frac_off_manifold_pre_clip": 0.3344,
+    "mimicry_mean_ks_vs_legit": 0.1745,
+    "mimicry_mean_ks_controlled": 0.2836,
+    "frac_off_manifold_pre_clip": 0.3552,
     "consistency_violations": {
       "violates_1h_rule": 0.0,
       "violates_24h_rule": 0.0,
@@ -56,7 +60,7 @@
     }
   },
   "iterations": 8,
-  "runtime_seconds": 79.4,
+  "runtime_seconds": 81.8,
   "config": {
     "iterations": 8,
     "attacks_per_vector": 400,
@@ -65,6 +69,6 @@
     "seed": 7,
     "data_source": "ieee",
     "train_rows": 442905,
-    "test_rows": 147635
+    "test_rows": 76617
   }
 }

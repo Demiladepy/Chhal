@@ -133,8 +133,11 @@ implemented and run in the live loop.
 **Adversarial ML evasion — attacks aimed at the detector itself**
 - ★ **Mimicry / threshold-hugging** (`threshold_hugging`) — the campaign is sized and paced
   from the *victim's own* history, not the population's, so nothing is anomalous FOR THIS
-  ACCOUNT. ***This is the hero live-loop vector and the technical heart of the arms race.***
-  If we cut everything else, this one stays.
+  ACCOUNT. This is the technical heart of the arms race; if we cut everything else, this
+  one stays. **It is not novel and is not billed as such** — Carminati et al., ACM TOPS
+  21(3) 2018, ran mimicry attacks with exactly these two attacker variables (amount,
+  timestamp) against a real Italian bank's detector. We claim the per-victim quantile
+  calibration, the fixed-FPR measurement and the ablation that prices it.
 - ★ **Intelligent card-testing / BIN probing** (`card_testing`) — micro-authorizations
   sized and spaced to stay under velocity limits until a live card is found — **live-loop**
 - Decision-boundary probing — using approve/decline responses as an oracle to map where the
@@ -301,7 +304,7 @@ it doesn't compute them live.
 - **Days 1–2:** lock the `AttackBatch`/`ScoreReport` contract + data schema + the train/test/
   heldout split policy; stand up the base dataset; LightGBM baseline on unmodified data
   (get a real F1/AUC number).
-- **Days 3–6:** red-team agent + the hero vector (threshold-hugging) + 2 more injected; first
+- **Days 3–6:** red-team agent + the mimicry vector (threshold-hugging) + 2 more injected; first
   end-to-end loop pass with the held-out split wired in; Streamlit skeleton.
 - **Days 7–9:** the constrained evasion optimizer + retraining loop; the held-out arms-race
   curve; gain-based "why flagged" features; UPI vector.

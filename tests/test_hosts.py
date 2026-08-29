@@ -172,8 +172,8 @@ def _starts_per_campaign(camp):
     return np.array(out, float)
 
 
-def test_the_hero_vector_sizes_its_attack_to_the_victim_not_to_the_crowd(base, pool):
-    """`mimic_host` is the whole hero vector, so it needs a test that fails without it.
+def test_mimicry_sizes_its_attack_to_the_victim_not_to_the_crowd(base, pool):
+    """`mimic_host` is the whole mimicry vector, so it needs a test that fails without it.
 
     A population-band attack spends the median customer's money on every card it touches,
     which is visibly wrong on any card that is not the median one: the detector scores
@@ -183,18 +183,18 @@ def test_the_hero_vector_sizes_its_attack_to_the_victim_not_to_the_crowd(base, p
     from dataclasses import replace
     prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
 
-    hero = ALL_VECTORS[0]
-    assert hero.temporal.mimic_host, "the hero vector is the one that mimics its victim"
+    mimicry = ALL_VECTORS[0]
+    assert mimicry.temporal.mimic_host, "ALL_VECTORS[0] must be the vector that mimics its victim"
 
-    class Crowd(hero):                              # same vector, population bands
-        vector_id = "hero_without_mimicry"
-        temporal = replace(hero.temporal, mimic_host=False)
+    class Crowd(mimicry):                           # same vector, population bands
+        vector_id = "mimicry_ablated"
+        temporal = replace(mimicry.temporal, mimic_host=False)
 
     def ratios(V, seed):
         rows = V().calibrate(prof, pool).batch(400, 0, np.random.default_rng(seed)).transactions
         return np.abs(rows["amount_to_avg_ratio"].to_numpy() - 1.0)
 
-    mimic = np.median([np.median(ratios(hero, s)) for s in (0, 1, 2)])
+    mimic = np.median([np.median(ratios(mimicry, s)) for s in (0, 1, 2)])
     crowd = np.median([np.median(ratios(Crowd, s)) for s in (0, 1, 2)])
     assert mimic < crowd, (
         f"mimicking the victim should land nearer their own baseline: "

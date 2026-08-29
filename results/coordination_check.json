@@ -15,146 +15,146 @@
   "protocol": "single-pass detector (one round of attacks, one retrain) per seed, so the variants differ in exactly one thing; deltas are computed per seed and then averaged, so the spread is of the difference",
   "recall_mean": {
     "threshold_hugging": {
-      "0.001": 0.0207,
-      "0.01": 0.086,
-      "0.05": 0.2083
+      "0.001": 0.0093,
+      "0.01": 0.0953,
+      "0.05": 0.2277
     },
     "threshold_hugging_no_mimicry": {
-      "0.001": 0.0117,
-      "0.01": 0.0663,
-      "0.05": 0.2043
+      "0.001": 0.0077,
+      "0.01": 0.1043,
+      "0.05": 0.2507
     },
     "mule_fanout": {
-      "0.001": 0.6053,
-      "0.01": 0.8423,
-      "0.05": 0.936
+      "0.001": 0.515,
+      "0.01": 0.8597,
+      "0.05": 0.9457
     },
     "mule_fanout_uncoordinated": {
-      "0.001": 0.6227,
-      "0.01": 0.867,
-      "0.05": 0.941
+      "0.001": 0.5327,
+      "0.01": 0.866,
+      "0.05": 0.936
     },
     "mule_fanout_known_payee": {
-      "0.001": 0.3763,
-      "0.01": 0.77,
-      "0.05": 0.878
+      "0.001": 0.2647,
+      "0.01": 0.7993,
+      "0.05": 0.9113
     },
     "mule_fanout_always_new_payee": {
-      "0.001": 0.6617,
-      "0.01": 0.872,
-      "0.05": 0.9543
+      "0.001": 0.6033,
+      "0.01": 0.8607,
+      "0.05": 0.9463
     }
   },
   "recall_sd": {
     "threshold_hugging": {
-      "0.001": 0.0142,
-      "0.01": 0.0254,
-      "0.05": 0.0423
+      "0.001": 0.002,
+      "0.01": 0.0248,
+      "0.05": 0.0375
     },
     "threshold_hugging_no_mimicry": {
-      "0.001": 0.0072,
-      "0.01": 0.021,
-      "0.05": 0.0239
+      "0.001": 0.0085,
+      "0.01": 0.019,
+      "0.05": 0.025
     },
     "mule_fanout": {
-      "0.001": 0.0768,
-      "0.01": 0.0483,
-      "0.05": 0.0104
+      "0.001": 0.067,
+      "0.01": 0.02,
+      "0.05": 0.006
     },
     "mule_fanout_uncoordinated": {
-      "0.001": 0.0533,
-      "0.01": 0.0403,
-      "0.05": 0.0179
+      "0.001": 0.0742,
+      "0.01": 0.0271,
+      "0.05": 0.0103
     },
     "mule_fanout_known_payee": {
-      "0.001": 0.0431,
-      "0.01": 0.0381,
-      "0.05": 0.0414
+      "0.001": 0.0832,
+      "0.01": 0.0257,
+      "0.05": 0.0168
     },
     "mule_fanout_always_new_payee": {
-      "0.001": 0.031,
-      "0.01": 0.0249,
-      "0.05": 0.0088
+      "0.001": 0.0674,
+      "0.01": 0.0372,
+      "0.05": 0.0194
     }
   },
   "comparisons": {
     "per-victim mimicry": {
-      "read_at_fpr": 0.001,
-      "mean_pp": -0.9,
-      "sem_pp": 0.96,
+      "read_at_fpr": 0.05,
+      "mean_pp": 2.3,
+      "sem_pp": 2.59,
       "beats_its_own_noise": false,
       "all_operating_points": {
         "0.001": [
-          -0.9,
-          0.96
+          -0.17,
+          0.48
         ],
         "0.01": [
-          -1.97,
-          2.21
+          0.9,
+          1.26
         ],
         "0.05": [
-          -0.4,
-          2.96
+          2.3,
+          2.59
         ]
       }
     },
     "coordination": {
-      "read_at_fpr": 0.01,
-      "mean_pp": 2.47,
-      "sem_pp": 0.81,
-      "beats_its_own_noise": true,
+      "read_at_fpr": 0.05,
+      "mean_pp": -0.97,
+      "sem_pp": 0.64,
+      "beats_its_own_noise": false,
       "all_operating_points": {
         "0.001": [
-          1.73,
-          1.73
+          1.77,
+          2.17
         ],
         "0.01": [
-          2.47,
-          0.81
+          0.63,
+          1.95
         ],
         "0.05": [
-          0.5,
-          0.58
+          -0.97,
+          0.64
         ]
       }
     },
     "the new-beneficiary flag": {
       "read_at_fpr": 0.001,
-      "mean_pp": -22.9,
-      "sem_pp": 3.4,
+      "mean_pp": -25.03,
+      "sem_pp": 3.19,
       "beats_its_own_noise": true,
       "all_operating_points": {
         "0.001": [
-          -22.9,
-          3.4
+          -25.03,
+          3.19
         ],
         "0.01": [
-          -7.23,
-          2.25
+          -6.03,
+          1.19
         ],
         "0.05": [
-          -5.8,
-          1.71
+          -3.43,
+          1.05
         ]
       }
     },
     "...and hard-coding it to 1": {
-      "read_at_fpr": 0.05,
-      "mean_pp": -1.83,
-      "sem_pp": 0.4,
-      "beats_its_own_noise": true,
+      "read_at_fpr": 0.001,
+      "mean_pp": -8.83,
+      "sem_pp": 4.89,
+      "beats_its_own_noise": false,
       "all_operating_points": {
         "0.001": [
-          -5.63,
-          3.05
+          -8.83,
+          4.89
         ],
         "0.01": [
-          -2.97,
-          1.33
+          -0.1,
+          2.65
         ],
         "0.05": [
-          -1.83,
-          0.4
+          -0.07,
+          1.26
         ]
       }
     }
