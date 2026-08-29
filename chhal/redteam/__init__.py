@@ -2,6 +2,7 @@ from .base import AttackVector
 from .vectors import (
     ALL_VECTORS,
     CardTesting,
+    Dunning,
     SyntheticBustout,
     ThresholdHugging,
     UpiCollectScam,
@@ -14,4 +15,5 @@ __all__ = [
     "SyntheticBustout",
     "CardTesting",
     "UpiCollectScam",
+    "Dunning",
 ]

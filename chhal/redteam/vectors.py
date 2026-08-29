@@ -37,9 +37,16 @@ from .campaign import TemporalProfile
 
 
 class ThresholdHugging(AttackVector):
-    """HERO VECTOR. Per-victim mimicry: the campaign is sized and paced from the
-    compromised card's OWN history, not from the population's. Hardest to catch — the
-    heart of the arms race. If everything else is cut, this stays.
+    """Per-victim mimicry: the campaign is sized and paced from the compromised card's
+    OWN history, not from the population's. The heart of the arms race; if everything
+    else is cut, this stays.
+
+    NOT NOVEL, and not to be described as such. Carminati et al., ACM TOPS 21(3) 2018,
+    ran mimicry attacks against the Banksealer detector on real data from a large Italian
+    bank, with the attacker's variables being exactly amount and timestamp. What is ours
+    is the per-victim quantile calibration below, the fixed-FPR measurement, and the
+    ablation in `scripts/coordination_check.py` that prices it (0.9 +- 1.0 points, i.e.
+    not yet a finding).
 
     `mimic_host=True` is the whole vector. Without it, "hides in the crowd" means the
     middle of everyone's distribution, which is not where the decision is made: the
@@ -200,12 +207,13 @@ class MuleFanout(AttackVector):
     small burst, and whatever weak clustering survives in `hour` and `day_of_week`.
 
     So this vector is built as a controlled experiment rather than as a fifth variation on
-    speed and size. It carries `mimic_host` for the same reason the hero vector does: each
+    speed and size. It carries `mimic_host` for the same reason `threshold_hugging` does: each
     account is made to look normal FOR ITSELF, which strips away the per-row tells the
     detector would otherwise catch it on. What is left as a difference from
     `threshold_hugging` is almost entirely the synchronisation.
 
-    That makes its recall a measurement of something. If it lands near the hero vector's,
+    That makes its recall a measurement of something. If it lands near
+    `threshold_hugging`'s,
     coordination is genuinely invisible here and "a graph layer is future work" stops
     being a line in a limitations section and becomes a number. If it lands well above,
     the clustering in `hour` and `day_of_week` is doing the work, and that is worth
@@ -331,5 +339,63 @@ class AutopayMandate(AttackVector):
 
 # Order is load-bearing: tests and scripts index this list positionally, so new vectors
 # are appended rather than inserted.
+class Dunning(AttackVector):
+    """NOT AN ATTACK. Legitimate subscription retries — the confusable class.
+
+    Deliberately excluded from `ALL_VECTORS`: nothing here is fraud, nothing is optimized
+    against the detector, and the loop never sees it. It exists so that `card_testing`'s
+    96%+ recall can be read against the thing it is most likely to be confused with.
+
+    When a recurring charge fails on a soft decline, the processor retries it. Stripe's
+    Smart Retries schedule up to eight attempts spread over roughly three weeks; other
+    merchants batch every failed subscription onto the first of the month. The resulting
+    transaction sequence is repeated attempts on one card, at the same amount, with a low
+    success rate, arriving in a cluster — and Stripe's own documentation warns that this
+    "can look like card testing".
+
+    That is the whole point. A detector that reaches 96% on card testing by flagging every
+    repeated same-amount attempt has not learned to detect fraud; it has learned to flag
+    dunning, and every merchant running a subscription book pays for it. Reporting
+    card-testing recall without this number beside it is reporting half a result.
+
+    Two variants are measured (see `scripts/dunning_control.py`):
+
+    * as dunning actually is — `is_new_beneficiary = 0`, because a retry by definition
+      goes to a merchant the card has already paid;
+    * a harder variant that sets it at the card-testing rate, which happens in practice
+      after a card update creates a fresh payment record. This bounds how much of the
+      separation is genuinely behavioural rather than one binary column.
+
+    The shape differs from `card_testing` where it really differs and nowhere else:
+    3-8 attempts rather than 20-60, hours-to-days apart rather than seconds, at an ordinary
+    subscription amount rather than a sub-dollar probe.
+    """
+
+    new_payee_rate = 0.0     # a retry goes to a merchant this card has already paid
+    vector_id = "dunning"
+    storyline = (
+        "A subscription charge soft-declines. The processor retries it on a ladder over "
+        "the following days, at the same amount, to the same merchant, until it clears "
+        "or the retry budget runs out. No fraud is involved anywhere in this sequence."
+    )
+    temporal = TemporalProfile(
+        txns_per_entity=(3, 8),                    # Stripe Smart Retries cap around 8
+        inter_arrival_s=(4 * 3_600.0, 5 * 86_400.0),   # the retry ladder, hours to days
+        amount_band=(0.25, 0.55),                  # an ordinary subscription price
+        amount_trend=1.0,                          # the SAME charge, retried
+    )
+
+    def static_features(self, n, rng):
+        p = self.p
+        return {
+            "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
+            "is_cross_border": p.bernoulli(0.02, n, rng),
+            "channel_code": np.zeros(n, int),                       # card rail
+        }
+
+
 ALL_VECTORS = [ThresholdHugging, SyntheticBustout, CardTesting, UpiCollectScam, MuleFanout,
                AutopayMandate]
+"""The attack suite. `Dunning` is deliberately NOT here — it is a legitimate population
+used as a negative control, and putting it in the loop would mean training the detector to
+call subscription retries fraud."""
