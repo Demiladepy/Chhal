@@ -1,4 +1,5 @@
-"""The five live-loop attack vectors — each one a campaign shape, not a row shape.
+"""The six live-loop attack vectors and one negative control — each a campaign shape,
+not a row shape.
 
 A vector declares two things and nothing else:
 

@@ -87,7 +87,7 @@ class BaseProfile:
 class AttackVector(ABC):
     # How often this vector transacts with a payee the account has not paid before.
     # A PROBABILITY, not a constant, and that distinction is the whole point. Four of
-    # the five vectors used to hard-code the flag to 1 on 100% of rows, which is not
+    # the vectors used to hard-code the flag to 1 on 100% of rows, which is not
     # what fraud looks like — a bust-out reuses a drop account, a card tester hits a
     # merchant twice, an operator sends to the same mule again. It was also a
     # self-inflicted tell: the ablation in scripts/coordination_check.py measured the

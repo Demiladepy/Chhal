@@ -41,8 +41,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from chhal.behaviour import HOUR_OFFSET, derive, hour_of   # noqa: E402
 from chhal.evaluation import threshold_for_fpr             # noqa: E402
-from prepare_ieee import (CHANNEL_MAP, DOMESTIC_ADDR2, _download,  # noqa: E402
-                          causal_target_encode)
+from prepare_ieee import (CHANNEL_MAP, DOMESTIC_ADDR2, EMBARGO_DAYS,  # noqa: E402
+                          TEST_FRAC, _download, causal_target_encode)
 
 # HEAVY: ~13 GB peak RSS and ~45s, because the last tier fits a model on all 339
 # V-columns at once. That is inherent to the question this script asks, not an
@@ -78,8 +78,21 @@ def main() -> None:
                        + (day - df.D1.fillna(0).astype(np.int64)).astype(str))[0]
     ts = df.TransactionDT.to_numpy(np.int64)
     beh = derive(uid, ts, df.TransactionAmt.to_numpy(np.float64))
-    is_tr = (df.TransactionDT <= df.TransactionDT.quantile(0.75)).to_numpy()
-    print(f"[split] train={is_tr.sum():,}  test={(~is_tr).sum():,}")
+    # The SAME split as prepare_ieee.py: temporal cut, a 7-day delay period, and every
+    # account straddling the cut purged from test. This script used to take a raw 0.75
+    # quantile and evaluate on everything after it, which left it as the one measurement
+    # in the repo still reading memorised entities. It is also the measurement that
+    # justifies inheriting the linkage block rather than generating it, so it is the last
+    # number that should be allowed to flatter itself.
+    cut = df.TransactionDT.quantile(1 - TEST_FRAC)
+    is_tr = (df.TransactionDT <= cut).to_numpy()
+    is_te = (df.TransactionDT > cut + EMBARGO_DAYS * 86_400).to_numpy()
+    train_uids = pd.unique(uid[is_tr])
+    straddles = is_te & pd.Series(uid).isin(train_uids).to_numpy()
+    is_te &= ~straddles
+    print(f"[split] train={is_tr.sum():,}  test={is_te.sum():,}  "
+          f"(held out: {(~is_tr & ~is_te).sum():,} = "
+          f"{EMBARGO_DAYS}-day delay period + {straddles.sum():,} straddling rows)")
 
     n = len(df)
 
@@ -155,8 +168,8 @@ def main() -> None:
                            subsample=0.8, subsample_freq=1, colsample_bytree=0.8, random_state=7,
                            n_jobs=-1, verbose=-1)
         m.fit(X[is_tr].to_numpy(np.float32), y[is_tr])
-        p = m.predict_proba(X[~is_tr].to_numpy(np.float32))[:, 1]
-        yt = y[~is_tr]; legit = p[yt == 0]
+        p = m.predict_proba(X[is_te].to_numpy(np.float32))[:, 1]
+        yt = y[is_te]; legit = p[yt == 0]
         n_cols = X.shape[1]
         del X
         gc.collect()

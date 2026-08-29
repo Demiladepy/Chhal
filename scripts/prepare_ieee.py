@@ -318,8 +318,8 @@ def build(raw_dir: str, out_path: str, force: bool = False) -> pd.DataFrame:
 
     # ENTITY LEAKAGE — accounts that sit on both sides of the cut.
     #
-    # Measured on the previous build: 23,688 accounts appeared in train AND test, which
-    # is 62,245 of 147,635 test rows — 42.2% of the test split sat on accounts the
+    # Measured on the current build: 21,337 accounts appeared in train AND test, which
+    # is 52,468 of 129,085 post-embargo test rows — 40.6% of them sat on accounts the
     # detector had already trained on. A temporal split alone does not prevent this,
     # because an account that transacts across the cut lands in both halves.
     #
