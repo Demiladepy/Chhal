@@ -1153,6 +1153,95 @@ Account-level features (`account_age_days`, `is_cross_border`, `channel_code`) a
 sampled once per account and broadcast: one card does not change country or rail partway
 through a campaign.
 
+### Copying a victim's trajectory instead of resampling it — a probe, and a null
+
+`threshold_hugging` reads a victim's amount and gap distributions and then draws from them
+**independently**. That matches the marginals and throws away everything else. A card's
+spending is not i.i.d.: a large purchase is followed by a quiet week, an evening burst
+repeats weekly, a subscription lands on the same day each month. Draw six amounts
+independently from a card's own quantile band and you can produce its 90th-percentile
+spend six times running — every value individually unremarkable, the sequence something
+that card has never once done. Sajja et al. ([arXiv 2604.13125](https://arxiv.org/abs/2604.13125))
+make the general form of the argument: a generator that matches marginals cannot preserve
+joint structure, and the gap is measurable.
+
+`TrajectoryReplay` is the constructive answer. Do not approximate the joint — copy it,
+from the one account entitled to it. A contiguous block of the victim's real history: its
+own gap sequence with per-gap jitter, its own amount sequence under one shared scale
+factor, phase-aligned to the weekday and hour the block originally ran at. The attacker
+needs read access to the statement, which is exactly what an account takeover provides —
+not a stronger assumption than `threshold_hugging` makes, just a better use of the same
+one. It is `ThresholdHugging` with one flag changed and nothing else, so the comparison
+below is controlled rather than two vectors that happen to differ.
+
+**The prediction was written down first, and it held.** [Why every attack scores
+zero](#why-every-attack-scores-zero) established that the ten columns the red team
+controls carry no usable signal here at all: replace every one of them with values drawn
+from real fraud and recall stays at 0.00%. A better sequence model improves exactly those
+ten columns. So it cannot move the headline, and a headline that moved would have meant
+the earlier result was wrong rather than that this vector was good. It is shipped as a
+probe for that reason, and is **not** in `ALL_VECTORS`.
+
+**The first result has nothing to do with detection: most victims cannot be replayed at
+all.** A block of *k* attack transactions has to be cut from *k+2* real ones, and
+IEEE-CIS accounts are short — the eligible test hosts have a median of **two**
+transactions each. On the pool the loop actually uses, only **7.5%** of campaigns have a
+victim with enough history to cut a block from; the rest fall back to mimicry. That is not
+an implementation limit. It is the same limit a real attacker faces, because you cannot
+replay a statement with three lines on it, and it caps what any sequence-level attack can
+do on this population before a detector is involved. It also means a comparison run on
+that pool is mostly mimicry against mimicry, so both vectors are additionally run on a
+pool gated to hosts long enough that **every** campaign replays. Same victims for both;
+the price is that those hosts are a small, unrepresentative slice of the data.
+
+On that gated pool the replay is measurably the more faithful sequence, on three
+statistics the marginals do not constrain:
+
+| | ideal | `threshold_hugging` | `trajectory_replay` |
+|---|---|---|---|
+| gap CV, relative to the victim's own | 1.00 | 0.38 | **0.70** |
+| lag-1 autocorrelation of log amount, minus the victim's | 0.00 | −0.30 | **−0.13** |
+| campaigns going above the victim's own peak `amount_to_avg_ratio` | — | 5.5% | 31.7% |
+
+The first two are the claim, and the copy roughly halves both errors: mimicry's cadence is
+unnaturally even because `_host_gaps` draws every gap from the victim's 25th–75th
+percentile band, while real cards go quiet for a week and then spend three times in an
+evening. The third row is **not** a joint-structure statistic and is not scored as one —
+it is a marginal property that mimicry wins by construction, and what it measures for the
+replay is `REPLAY_SCALE`. The block is the victim's own shape multiplied by up to 1.3, so
+a block containing their largest transaction clears their record. That trade is worth
+naming rather than hiding: a replay at scale 1.0 is perfectly faithful and steals exactly
+what the victim would have spent anyway.
+
+**And none of it changes what the detector does.**
+
+| gated pool, 6 seeds, 0.1% FPR budget | `threshold_hugging` | `trajectory_replay` |
+|---|---|---|
+| as generated | 0.02% | 0.02% |
+| inherited block ← real fraud (experiment E) | 12.70% | 12.77% |
+| **paired difference** | — | **−0.07% ± 0.12%** |
+
+*(real fraud itself: 15.14%)*
+
+The second row is the one that had to be run. As generated, both vectors sit at the floor,
+and comparing two zeroes proves nothing — the controlled columns are invisible, so no
+difference between them could show up even if one existed. Transplanting the inherited
+block from real fraud is what makes the campaigns detectable at all, and it is therefore
+the only place a difference *could* appear. It does not. The comparison is **paired** —
+same seed, same detector, same threshold, same transplant donors — so the per-seed
+difference cancels almost all the variance the two levels carry separately; comparing the
+levels alone would have been badly underpowered. At ±0.12% it rules out any paired gap
+beyond 0.24%, which is a real null rather than a shrug, though not a proof of no
+difference.
+
+So: **copying a victim's joint structure buys a large, measurable gain in sequence
+realism and no evasion whatsoever.** The realism is a fidelity result, not a security one.
+Read together with the 7.5% feasibility rate, the honest summary of the sequence-modelling
+direction on this dataset is that it is well-founded, correctly implemented, cheap to
+run — and, here, worth nothing to an attacker. Run it yourself:
+
+    .venv/bin/python scripts/audit/trajectory_replay_probe.py
+
 ---
 
 ## Latency — can this run inside an authorization?
@@ -1186,7 +1275,9 @@ chhal/
   data.py          # real IEEE-CIS base population (synthetic fallback); temporal split
   redteam/hosts.py # real accounts a campaign may compromise, and the leakage rules
   detector.py      # LightGBM blue-team detector (gain-based feature importance)
-  redteam/         # the six live-loop attack vectors + the dunning negative control
+  redteam/         # the six live-loop attack vectors, the dunning negative control,
+                   #   and the trajectory-replay probe — neither of the last two is in
+                   #   ALL_VECTORS, and neither is ever trained on
   optimizer.py     # constrained evasion optimizer (the novel core)
   evaluation.py    # held-out split protocol + metrics
   fidelity.py      # KS-tests + on-manifold rate — fidelity as a metric, not a claim
@@ -1204,6 +1295,8 @@ scripts/coordination_check.py    # ablate coordination vs the per-row tells
 scripts/ensemble_check.py        # supervised vs max-fusion vs stacked, leave-one-out
 scripts/latency_check.py         # per-transaction latency, throughput, footprint
 dashboard/app.py                 # 3-panel Streamlit demo (replays results/)
+scripts/audit/                   # one-question scripts that check a claim in this
+                                 #   README; see scripts/audit/README.md
 tests/                           # contract, optimizer, loop, fidelity, mitigation
 ```
 

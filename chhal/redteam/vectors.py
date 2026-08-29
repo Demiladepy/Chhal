@@ -31,6 +31,8 @@ here, because they do not emit tabular features — see the strategy doc.
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 
 from .base import AttackVector
@@ -395,8 +397,58 @@ class Dunning(AttackVector):
         }
 
 
+class TrajectoryReplay(ThresholdHugging):
+    """A PROBE, not a fix, and deliberately excluded from `ALL_VECTORS`.
+
+    Identical to `threshold_hugging` in every respect but one: `replay_host=True`. Same
+    payee rate, same static features, same host pool, same campaign sizes. The single
+    difference is where the timeline comes from — mimicry resamples the victim's
+    marginals independently, replay copies a contiguous slice of the victim's actual
+    past. That makes the pair a controlled comparison rather than two vectors that happen
+    to differ.
+
+    Why it exists
+    -------------
+    Sajja et al. (arXiv 2604.13125) argue that a generator matching a population's
+    marginals cannot preserve its joint structure, and that the gap is measurable. This
+    is the constructive answer: do not approximate the joint, copy it from the one
+    account entitled to it. `mimic_host` can draw a card's 90th-percentile spend six
+    times running — every value individually unremarkable, the sequence something that
+    card has never once done. A replayed block cannot, because the sequence is the card's
+    own.
+
+    Why it is a probe and cannot be the headline
+    --------------------------------------------
+    `scripts/audit/why_the_attacks_score_zero.py` established that the ten columns the
+    red team controls carry no usable signal in this setup at all: replacing every one of
+    them with values drawn from REAL FRAUD leaves recall at 0.00%. A better sequence
+    model improves exactly those ten columns. So the prediction, stated before the
+    measurement and not after it, is that this vector's recall is 0.00% like everything
+    else, and that a headline number moving would mean the §2.7 result is wrong rather
+    than that this vector is good.
+
+    What it can still show is whether the sequence is genuinely more realistic — measured
+    on statistics the marginals do not constrain — and whether that realism buys anything
+    once the inherited block is transplanted away and the controlled block is the only
+    thing left to see. `scripts/audit/trajectory_replay_probe.py` runs both.
+    """
+
+    vector_id = "trajectory_replay"
+    storyline = (
+        "The attacker has statement access from the takeover, so instead of estimating "
+        "the victim's habits they replay them: a real block of that card's past spending, "
+        "its own gaps and its own amounts, scaled up modestly and started on the same "
+        "weekday and hour the block originally ran at."
+    )
+    temporal = replace(ThresholdHugging.temporal, mimic_host=False, replay_host=True)
+
+
 ALL_VECTORS = [ThresholdHugging, SyntheticBustout, CardTesting, UpiCollectScam, MuleFanout,
                AutopayMandate]
-"""The attack suite. `Dunning` is deliberately NOT here — it is a legitimate population
-used as a negative control, and putting it in the loop would mean training the detector to
-call subscription retries fraud."""
+"""The attack suite. Two classes above are deliberately NOT here.
+
+`Dunning` is a legitimate population used as a negative control; putting it in the loop
+would mean training the detector to call subscription retries fraud. `TrajectoryReplay` is
+a probe run against `threshold_hugging` as its control, and adding it would put two
+near-identical vectors in the suite and silently reweight every aggregate that averages
+over vectors."""

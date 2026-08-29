@@ -21,7 +21,8 @@ from chhal.contract import (FEATURE_COLUMNS, INHERITED_FEATURES,  # noqa: E402
 from chhal.data import load_base_data                             # noqa: E402
 from chhal.redteam import ALL_VECTORS                             # noqa: E402
 from chhal.redteam.base import BaseProfile                        # noqa: E402
-from chhal.redteam.hosts import ACCOUNT_COLUMN, HostPool          # noqa: E402
+from chhal.redteam.hosts import (ACCOUNT_COLUMN, HostPool,        # noqa: E402
+                                 TIME_COLUMN)
 
 SMALL = dict(source="synthetic", n_legit=6000, n_baseline_fraud=200, seed=1)
 
@@ -239,3 +240,206 @@ def test_a_victim_with_almost_no_history_degrades_instead_of_breaking(base):
         200, 0, np.random.default_rng(9)).transactions
     assert np.isfinite(rows.to_numpy(float)).all()
     assert (rows["amount"] > 0).all()
+
+
+# ---------------------------------------------------------------------------------
+# trajectory replay: copying the victim's joint structure instead of its marginals
+# ---------------------------------------------------------------------------------
+
+LONG_HISTORY = 20
+
+
+def _replay_pool(base):
+    """Hosts with enough history that EVERY campaign can cut a block.
+
+    `TrajectoryReplay` runs up to 9 attack transactions and `_host_trajectory` needs
+    n + 2 real ones, so 11 is the worst case. Making every host at least that long makes
+    "did it fall back?" unambiguous: with this pool a fallback is a bug, and the tests
+    below can assert on every campaign rather than on whichever ones happened to be long
+    enough.
+
+    The small synthetic fixture has no account that long, so the legitimate rows are
+    re-blocked into accounts of {n} — real column values, real timestamps, longer
+    histories. Nothing here is a claim about the data; it is a bench with enough runway
+    for the mechanism to be observable at all.
+    """.format(n=LONG_HISTORY)
+    df = base.train[base.train[LABEL_COLUMN] == 0].sort_values(TIME_COLUMN).copy()
+    df = df.iloc[: (len(df) // LONG_HISTORY) * LONG_HISTORY]
+    df[ACCOUNT_COLUMN] = np.repeat(np.arange(len(df) // LONG_HISTORY), LONG_HISTORY)
+    return HostPool(df, min_history=LONG_HISTORY)
+
+
+def _campaigns(camp):
+    """Split a Campaigns bundle into (history_ts, history_amt, attack_ts, attack_amt)."""
+    for e in np.unique(camp.entity):
+        m = camp.entity == e
+        h, a = m & ~camp.is_attack, m & camp.is_attack
+        yield (camp.timestamp_s[h].astype(float), camp.amount[h],
+               camp.timestamp_s[a].astype(float), camp.amount[a])
+
+
+def test_replay_copies_a_contiguous_block_of_the_victims_own_history(base):
+    """The claim `replay_host` makes, stated as an assertion.
+
+    `mimic_host` matches the victim's marginals and destroys everything else: six
+    independent draws from a card's own quantile band can easily be its 90th-percentile
+    spend six times running — each value unremarkable, the sequence something that card
+    has never once done. Replay is supposed to copy an ACTUAL slice, so the evidence for
+    it is that one offset j into the victim's real history explains the whole campaign:
+    the gaps are that slice's gaps up to per-gap jitter, and the amounts are that slice's
+    amounts times ONE scale factor.
+
+    Fails if replay silently degrades to mimicry, to the population bands, or to
+    independent draws from the victim's own values — none of which admit a single j.
+    """
+    from chhal.redteam.campaign import REPLAY_JITTER, REPLAY_SCALE
+    from chhal.redteam.vectors import TrajectoryReplay
+
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    _, camp = TrajectoryReplay().calibrate(prof, _replay_pool(base)).render_with_timeline(
+        400, np.random.default_rng(5))
+
+    campaigns = list(_campaigns(camp))[:-1]        # the last one is truncated mid-way
+    assert len(campaigns) > 10
+    for h_ts, h_amt, a_ts, a_amt in campaigns:
+        if len(a_ts) < 3:
+            continue
+        real_gaps, atk_gaps = np.diff(h_ts), np.diff(a_ts)
+        k = len(atk_gaps)
+        # The jitter band, plus two seconds of absolute slack for the int64 timestamp
+        # cast. The slack has to be absolute rather than a widened ratio: campaigns can
+        # contain seven-second gaps, where losing under a second to truncation twice over
+        # is a 14% relative error and no honest ratio band would survive it.
+        lo = np.maximum(real_gaps * REPLAY_JITTER[0], 1.0) - 2.0
+        hi = real_gaps * REPLAY_JITTER[1] + 2.0
+        offsets = [j for j in range(len(real_gaps) - k + 1)
+                   if np.all(atk_gaps >= lo[j:j + k]) and np.all(atk_gaps <= hi[j:j + k])]
+        assert offsets, (
+            "no offset into this victim's real history explains the campaign's gaps, so "
+            "nothing was replayed"
+        )
+        # the same j must also explain the amounts, and with a single shared scale
+        assert any(
+            np.all(h_amt[j:j + len(a_amt)] > 0)
+            and np.allclose(r := a_amt / h_amt[j:j + len(a_amt)], r[0], rtol=1e-6)
+            and REPLAY_SCALE[0] - 1e-9 <= r[0] <= REPLAY_SCALE[1] + 1e-9
+            for j in offsets
+        ), "the amounts are not one real slice under one scale factor"
+
+
+def test_replay_leaves_the_victims_last_real_transaction_alone():
+    """A block is cut from the card's settled past, not from whatever it did immediately
+    before the takeover — copying that would make the campaign a literal continuation of
+    the moment it interrupted.
+
+    The history here is built so the offset is recoverable: amounts are 1..20, so a slice
+    scaled by one factor still has consecutive-integer ratios and the block's position
+    can be read straight back out of it.
+    """
+    from chhal.redteam.campaign import _host_trajectory
+
+    rng = np.random.default_rng(0)
+    n, ts = 4, np.arange(20, dtype=np.int64) * 86_400 + 1_000
+    amt = np.arange(1.0, 21.0)
+    for _ in range(200):
+        out = _host_trajectory(ts, amt, n, rng)
+        assert out is not None, "a twenty-transaction history is long enough to replay"
+        _, amounts, _, _ = out
+        scale = float(amounts[1] - amounts[0])           # consecutive values, one scale
+        j = round(amounts[0] / scale) - 1
+        assert j >= 0
+        # the block reads n+1 timestamps, ts[j] .. ts[j + n], to get its n gaps
+        assert j + n <= len(ts) - 2, (
+            f"block ts[{j}:{j + n + 1}] reached the final real transaction at index "
+            f"{len(ts) - 1}"
+        )
+
+
+def test_replay_refuses_a_victim_it_cannot_cut_a_block_from(base):
+    """Too short to replay must mean *fall back*, not *emit nonsense*. The chain is
+    replay -> mimicry -> population bands, and a thin-history pool has to come out the
+    far end with valid rows."""
+    from chhal.redteam.campaign import _host_trajectory
+    from chhal.redteam.vectors import TrajectoryReplay
+
+    rng = np.random.default_rng(0)
+    short = np.arange(4, dtype=np.int64) * 86_400
+    assert _host_trajectory(short, np.arange(4.0), 4, rng) is None
+
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    rows = TrajectoryReplay().calibrate(prof, HostPool(base.train, min_history=2)).batch(
+        300, 0, np.random.default_rng(4)).transactions
+    assert np.isfinite(rows.to_numpy(float)).all()
+    assert (rows["amount"] > 0).all()
+
+
+def test_replay_preserves_a_cadence_that_mimicry_flattens(base):
+    """Why copying beats resampling, on a statistic the marginals do not constrain.
+
+    `_host_gaps` draws every gap from the victim's own 25th-75th percentile band, so a
+    mimicry campaign has an unnaturally even cadence: real cards go quiet for a week and
+    then spend three times in an evening, and a middle-quantile draw does neither. The
+    spread of the gaps within one campaign, relative to the spread within the victim's
+    own real history, is where that shows.
+
+    This is the test that distinguishes the two vectors at all — they match on amount and
+    gap marginals by construction, so a marginal comparison cannot tell them apart.
+    """
+    from chhal.redteam.vectors import ThresholdHugging, TrajectoryReplay
+
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    pool = _replay_pool(base)
+
+    def cv_ratio(V, seed):
+        """Median over campaigns of (campaign gap CV) / (that victim's real gap CV)."""
+        _, camp = V().calibrate(prof, pool).render_with_timeline(
+            400, np.random.default_rng(seed))
+        out = []
+        for h_ts, _, a_ts, _ in list(_campaigns(camp))[:-1]:
+            if len(a_ts) < 3 or len(h_ts) < 3:
+                continue
+            rg, ag = np.diff(h_ts), np.diff(a_ts)
+            if rg.mean() <= 0 or ag.mean() <= 0:
+                continue
+            out.append((ag.std() / ag.mean()) / (rg.std() / rg.mean() + 1e-12))
+        return float(np.median(out))
+
+    replay = np.median([cv_ratio(TrajectoryReplay, s) for s in (0, 1, 2)])
+    mimic = np.median([cv_ratio(ThresholdHugging, s) for s in (0, 1, 2)])
+    assert abs(replay - 1.0) < abs(mimic - 1.0), (
+        f"replay should carry the victim's own burstiness: gap-CV ratio {replay:.2f} "
+        f"(replay) vs {mimic:.2f} (mimicry), where 1.00 is the victim's real cadence"
+    )
+
+
+def test_phase_alignment_lands_on_the_blocks_own_hour_and_weekday(base):
+    """A replayed block carries a weekly rhythm in its gaps. Started on the wrong weekday
+    the whole sequence lands on the wrong days, and `day_of_week` is a column the
+    detector reads — so the start is aligned on both, and never lands before the takeover
+    is allowed to happen."""
+    from chhal.behaviour import day_of_week_of, hour_of
+    from chhal.redteam.campaign import _phase_align
+
+    rng = np.random.default_rng(1)
+    for _ in range(300):
+        earliest = int(rng.integers(0, 400 * 86_400))
+        h, d = int(rng.integers(0, 24)), int(rng.integers(0, 7))
+        t = _phase_align(earliest, h, d, rng)
+        assert t >= earliest
+        assert int(hour_of(np.array([t]))[0]) == h
+        assert int(day_of_week_of(np.array([t]))[0]) == d
+        assert t - earliest < 8 * 86_400 + 3_600      # at most one week of waiting
+
+
+def test_replay_still_starts_after_the_last_real_transaction(base):
+    """Phase alignment moves the start around; it must never move it into the victim's
+    past. The rule that a campaign continues an account rather than reaching into it is
+    the one every leakage argument rests on."""
+    from chhal.redteam.vectors import TrajectoryReplay
+
+    prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    _, camp = TrajectoryReplay().calibrate(prof, _replay_pool(base)).render_with_timeline(
+        400, np.random.default_rng(2))
+    for h_ts, _, a_ts, _ in _campaigns(camp):
+        if len(a_ts):
+            assert a_ts.min() > h_ts.max()

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..behaviour import hour_of
+from ..behaviour import day_of_week_of, hour_of
 
 TAKEOVER_GAP_S = 3_600           # a campaign starts at least an hour after the last real txn
 MAX_TAKEOVER_WAIT_DAYS = 30      # ...and within a month of it
@@ -56,6 +56,33 @@ class TemporalProfile:
     A card that buys coffee gets a coffee-sized attack. Needs a few real transactions to
     read a distribution off; below that it falls back to the population bands, so a
     thin-history host degrades rather than producing nonsense.
+    """
+
+    replay_host: bool = False
+    """Replay a real slice of THIS victim's past instead of resampling its marginals.
+
+    `mimic_host` reads the victim's amount and gap distributions and then draws from
+    them INDEPENDENTLY. That matches the marginals and destroys everything else. A real
+    card's spending is not i.i.d.: a big amount is followed by a quiet week, a Friday
+    evening burst repeats weekly, a subscription lands on the same day each month. Draw
+    six amounts independently from a card's own quantiles and you can easily produce its
+    90th-percentile spend six times running — each value individually unremarkable, the
+    sequence something that card has never once done. The detector does not score
+    marginals; it scores `amount_to_avg_ratio`, both velocities and the gap, which are
+    all functions of the SEQUENCE.
+
+    So this takes a contiguous block of the victim's actual history and replays it: its
+    real gap sequence with a little jitter, its real amount sequence scaled by one
+    global factor, phase-aligned to the same hour-of-day and day-of-week the block
+    originally happened at. The joint structure is not approximated, it is copied,
+    because it is the victim's own.
+
+    What the attacker needs for this is exactly what an account takeover gives them —
+    read access to the statement. It is not a stronger assumption than `mimic_host`,
+    only a better use of the same one.
+
+    Falls back to `mimic_host` behaviour when the victim's history is too short to cut a
+    block from, and that in turn falls back to the population bands.
     """
 
     coordinated_window_s: float | None = None
@@ -143,6 +170,68 @@ def _host_gaps(history_ts: np.ndarray, n: int, rng: np.random.Generator) -> np.n
     return np.maximum(np.quantile(gaps, rng.uniform(0.25, 0.75, n)), 1.0)
 
 
+# A block of k attack transactions needs k+1 real ones to read k gaps from, and we
+# refuse to use the very last transaction so the replayed slice is a piece of the card's
+# settled past rather than a copy of whatever it did immediately before the takeover.
+MIN_HISTORY_TO_REPLAY = 6
+
+# The attacker is spending someone else's money, so replaying a slice at exactly its
+# original size is a waste; replaying it at triple is the tell the whole vector exists to
+# avoid. A single scale factor for the whole block, drawn here, keeps the SHAPE intact
+# while taking more than the victim would have.
+REPLAY_SCALE = (1.0, 1.3)
+
+# Gaps are copied, not cloned. Identical inter-arrival times across a campaign would be a
+# fingerprint of its own, and a human repeating a routine does not repeat it to the
+# second.
+REPLAY_JITTER = (0.9, 1.1)
+
+
+def _host_trajectory(history_ts: np.ndarray, history_amount: np.ndarray, n: int,
+                     rng: np.random.Generator):
+    """A contiguous slice of this card's real past: its gaps, its amounts, its phase.
+
+    Returns `(gaps, amounts, start_hour, start_dow)` or None when the history is too
+    short to cut a block of `n` from. `gaps` has n entries to match the sampled path's
+    convention (the caller discards the last), `amounts` has n.
+    """
+    if len(history_ts) < max(MIN_HISTORY_TO_REPLAY, n + 2):
+        return None
+    # a block of n+1 transactions gives n gaps; stop one short of the end
+    hi = len(history_ts) - (n + 1) - 1
+    if hi < 0:
+        return None
+    j = int(rng.integers(0, hi + 1))
+    block_ts = history_ts[j:j + n + 1].astype(np.float64)
+    gaps = np.diff(block_ts)
+    if not len(gaps) or not np.all(gaps > 0):
+        return None
+    gaps = np.maximum(gaps * rng.uniform(*REPLAY_JITTER, len(gaps)), 1.0)
+    amounts = history_amount[j:j + n].astype(np.float64) * rng.uniform(*REPLAY_SCALE)
+    return (gaps, amounts,
+            int(hour_of(block_ts[:1].astype(np.int64))[0]),
+            int(day_of_week_of(block_ts[:1].astype(np.int64))[0]))
+
+
+def _phase_align(earliest: int, target_hour: int, target_dow: int,
+                 rng: np.random.Generator) -> int:
+    """The first moment at or after `earliest` on the block's own hour AND weekday.
+
+    `_takeover_time` aligns the hour only. That is enough when the gaps come from a band,
+    but a replayed block carries a weekly rhythm in its gaps — a Friday-evening slice
+    started on a Tuesday morning lands its whole sequence on the wrong days, and
+    `day_of_week` is a column the detector reads.
+    """
+    base = (int(earliest) // 3_600) * 3_600
+    dh = (target_hour - int(hour_of(np.array([base]))[0])) % 24
+    t = base + dh * 3_600
+    dd = (target_dow - int(day_of_week_of(np.array([t]))[0])) % 7
+    t += dd * 86_400 + int(rng.integers(0, 3_600))
+    while t < earliest:              # adding a whole week preserves both hour and weekday
+        t += 7 * 86_400
+    return int(t)
+
+
 # How often a campaign starts at an hour outside its vector's usual band. Without this
 # a narrow band plus short hops meant a vector never appeared at some hours at all:
 # `upi_collect` emitted ZERO transactions in thirteen of the twenty-four, so the single
@@ -189,7 +278,7 @@ def _snap_hours(a_ts: np.ndarray, host_hours: np.ndarray | None,
     """Pull each attack's hour-of-day back onto the hours this card is actually used at.
 
     Only the FIRST transaction used to be snapped, so a campaign's clock diffused: after
-    two or three log-uniform gaps the hero vector was spread almost uniformly over the
+    two or three log-uniform gaps `threshold_hugging` was spread almost uniformly over the
     day, putting 4.4% of its volume at 03:00 where real legitimate traffic has 0.44%.
     For the vector whose entire claim is that it looks normal for its victim, that was
     the worst place to leak — and it leaked on the one column nobody was watching.
@@ -236,32 +325,56 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
                                        TAKEOVER_GAP_S, rng)
         n_a = int(rng.integers(profile.txns_per_entity[0], profile.txns_per_entity[1] + 1))
 
-        host_hours = hour_of(host.history_ts) if profile.mimic_host else None
+        # `replay_host` is a stronger form of `mimic_host` and implies it. Both read the
+        # victim's own history; a replay that cannot find a block to cut falls back to
+        # mimicry, and mimicry in turn falls back to the population bands.
+        per_victim = profile.mimic_host or profile.replay_host
+        host_hours = hour_of(host.history_ts) if per_victim else None
         earliest = None
         if anchor is not None:
             earliest = max(int(anchor + rng.uniform(0.0, profile.coordinated_window_s)),
                            host.last_ts + TAKEOVER_GAP_S)
 
-        start = _takeover_time(host.last_ts, profile.start_hour_band, base_profile, rng,
-                               host_hours=host_hours, earliest=earliest)
+        traj = (_host_trajectory(host.history_ts, host.history_amount, n_a, rng)
+                if profile.replay_host else None)
 
-        a_gaps = None
-        if profile.mimic_host:
-            a_gaps = _host_gaps(host.history_ts, n_a, rng)
-        if a_gaps is None:
-            a_gaps = _log_uniform(*profile.inter_arrival_s, n_a, rng)
+        a_amt = None
+        if traj is not None:
+            a_gaps, a_amt, blk_hour, blk_dow = traj
+            first = earliest if earliest is not None else (
+                host.last_ts + TAKEOVER_GAP_S
+                + int(rng.integers(0, MAX_TAKEOVER_WAIT_DAYS * 86_400)))
+            # A coordinated vector has to fire inside its shared window, so it does not
+            # also get to pick its weekday: phase alignment can push a start out by up to
+            # a week, which would pull the batch apart. No shipped vector combines the
+            # two; this is what happens if one ever does.
+            start = (first if anchor is not None
+                     else _phase_align(first, blk_hour, blk_dow, rng))
+        else:
+            start = _takeover_time(host.last_ts, profile.start_hour_band, base_profile,
+                                   rng, host_hours=host_hours, earliest=earliest)
+            a_gaps = _host_gaps(host.history_ts, n_a, rng) if per_victim else None
+            if a_gaps is None:
+                a_gaps = _log_uniform(*profile.inter_arrival_s, n_a, rng)
+
         # The first attack lands AT the takeover, not one gap after it. `cumsum` alone
         # would push it out by a full inter-arrival, which was a modest offset while the
         # gaps came from the vector's own band and became weeks once they came from the
         # victim's — long enough to break a coordinated window apart.
         a_ts = start + np.r_[0.0, np.cumsum(a_gaps[:-1])]
-        if profile.mimic_host:
+        # A replayed block's hours are already this card's own, because they came off its
+        # real timeline. Snapping each one independently would break the sequence the
+        # replay exists to preserve.
+        if traj is None and per_victim:
             a_ts = _snap_hours(a_ts, host_hours, rng)
 
-        if profile.mimic_host and len(host.history_amount) >= MIN_HISTORY_TO_MIMIC:
-            a_amt = _host_amounts(host.history_amount, *profile.amount_band, n_a, rng)
-        else:
-            a_amt = base_profile.band("amount", *profile.amount_band, n_a, rng)
+        if a_amt is None:
+            if per_victim and len(host.history_amount) >= MIN_HISTORY_TO_MIMIC:
+                a_amt = _host_amounts(host.history_amount, *profile.amount_band, n_a, rng)
+            else:
+                a_amt = base_profile.band("amount", *profile.amount_band, n_a, rng)
+        # Applied to a replayed block too: the trend is the attacker's deliberate
+        # departure from the victim's shape, and a vector that declares 1.0 gets none.
         if profile.amount_trend != 1.0 and n_a > 1:
             a_amt = a_amt * np.linspace(1.0, profile.amount_trend, n_a)
 

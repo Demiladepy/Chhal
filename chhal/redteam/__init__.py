@@ -5,6 +5,7 @@ from .vectors import (
     Dunning,
     SyntheticBustout,
     ThresholdHugging,
+    TrajectoryReplay,
     UpiCollectScam,
 )
 
@@ -16,4 +17,5 @@ __all__ = [
     "CardTesting",
     "UpiCollectScam",
     "Dunning",
+    "TrajectoryReplay",
 ]

@@ -59,6 +59,19 @@ worth keeping write a single CSV to `results/` and are marked below.
                                      the direction the repo argues against.
                                      -> results/card_precision_at_k.csv
 
+    trajectory_replay_probe.py       Does copying a victim's real trajectory beat
+                                     resampling its marginals? Prediction written down
+                                     first and held: both sit at the floor as generated.
+                                     Finds that only 7.5% of campaigns have a victim with
+                                     enough history to replay at all, so it also runs on
+                                     a pool gated to hosts that can. There the copy is
+                                     the more faithful sequence (gap CV 0.70 vs 0.38
+                                     against an ideal 1.00) and buys no evasion: paired
+                                     difference under the experiment-E transplant is
+                                     -0.07% +- 0.12%. A null, and a well-powered one.
+                                     -> results/trajectory_replay_detection.csv,
+                                        results/trajectory_replay_sequence.csv
+
 Run any of them with the project venv from the repo root:
 
     .venv/bin/python scripts/audit/real_positive_anchor.py
