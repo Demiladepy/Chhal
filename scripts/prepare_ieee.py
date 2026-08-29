@@ -42,9 +42,12 @@ Honest approximations, all documented in the write-up
                 (uid, ProductCD, R_emaildomain) counterparty pair in time order.
 * merchant_risk - no merchant column exists. Smoothed historical fraud rate of the
                 (ProductCD, R_emaildomain) bucket, fit on the TRAIN split only and
-                out-of-fold within train. This mirrors what an issuer actually has: a
-                merchant risk score built from past outcomes, never from the present
-                transaction.
+                computed as an EXPANDING WINDOW over transaction time: each row sees only
+                what had already happened in its bucket. This mirrors what an issuer
+                actually has: a merchant risk score built from past outcomes, never from
+                the present transaction and never from the future. (It used to be a
+                random 5-fold out-of-fold encoding, which stops self-encoding but lets
+                June score January.)
 
 Split
 -----
@@ -92,7 +95,6 @@ EXPECTED_FRAUDS = 20_663
 
 DOMESTIC_ADDR2 = 87.0     # 88.1% of rows; everything else is cross-border
 TE_SMOOTHING = 50.0       # Bayesian prior weight for merchant-risk target encoding
-TE_FOLDS = 5
 TEST_FRAC = 0.25
 EMBARGO_DAYS = 7          # delay period between the splits — see the split block below
 
@@ -177,36 +179,76 @@ def _behavioural_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _merchant_risk(df: pd.DataFrame, is_train: np.ndarray, seed: int) -> np.ndarray:
-    """Smoothed historical fraud rate per (ProductCD, R_emaildomain) bucket.
+def causal_target_encode(key: np.ndarray, y: np.ndarray, is_train: np.ndarray,
+                         ts: np.ndarray, smoothing: float = TE_SMOOTHING,
+                         prior: float | None = None) -> np.ndarray:
+    """Smoothed target encoding that can only ever see the past.
 
-    Fit on TRAIN ONLY. Within train it is computed out-of-fold, so no row contributes
-    to the encoding it is scored with — otherwise the detector would be reading the
-    label through the feature.
+    Fit on TRAIN ONLY, and **causally**: every train row is encoded from bucket outcomes
+    that are strictly EARLIER in transaction time than itself.
+
+    This replaces a random K-fold out-of-fold encoding. Random folds do stop a row from
+    encoding itself, which is the leak everyone checks for, but on a temporally ordered
+    dataset they leave a second one wide open: four of the five folds are drawn from the
+    whole train window, so a January transaction was being scored with a merchant risk
+    number computed partly from June. No issuer has that. The feature was quietly telling
+    the detector how the bucket would turn out.
+
+    The fix is an expanding-window encoding — at each point in time a bucket carries only
+    what had already happened in it — which is what a real merchant risk score is. Rows
+    sharing a timestamp with the row being encoded are excluded as a block, not just the
+    row itself, so simultaneous transactions in the same bucket cannot encode each other.
+    Early rows in a bucket fall back to the prior, which is also what an issuer sees for a
+    merchant it has no history on.
+
+    Test rows keep the full-train fit: with the delay period in place every train row is
+    strictly earlier than every test row, so that fit is already causal.
+
+    One thing here is deliberately NOT causal and is called out rather than buried: the
+    shrinkage target `prior` is the mean fraud rate over the whole train split, so it does
+    contain future information. It is left that way because it is a single scalar applied
+    identically to every row — it shifts all encodings together and cannot rank one row
+    above another — and because a portfolio base rate is something an issuer genuinely
+    does know. Pass `prior` explicitly to pin it.
     """
-    key = (df.ProductCD.astype(str) + "|" + df.R_emaildomain.fillna("NA").astype(str)).to_numpy()
-    y = df[LABEL_COLUMN].to_numpy(np.float64)
-    prior = y[is_train].mean()
-    out = np.full(len(df), prior, np.float64)
+    y = np.asarray(y, np.float64)
+    if prior is None:
+        prior = float(y[is_train].mean())
+    out = np.full(len(y), prior, np.float64)
 
-    def encode(fit_mask: np.ndarray, apply_mask: np.ndarray) -> None:
-        agg = pd.DataFrame({"k": key[fit_mask], "y": y[fit_mask]}).groupby("k").y.agg(["sum", "count"])
-        sm = (agg["sum"] + prior * TE_SMOOTHING) / (agg["count"] + TE_SMOOTHING)
-        out[apply_mask] = pd.Series(key[apply_mask]).map(sm).fillna(prior).to_numpy()
-
-    rng = np.random.default_rng(seed)
+    # --- train: expanding window over strictly earlier timestamps -------------------
     train_idx = np.flatnonzero(is_train)
-    folds = rng.integers(0, TE_FOLDS, len(train_idx))
-    for f in range(TE_FOLDS):                       # out-of-fold within train
-        val = train_idx[folds == f]
-        fit = np.zeros(len(df), bool); fit[train_idx[folds != f]] = True
-        apply = np.zeros(len(df), bool); apply[val] = True
-        encode(fit, apply)
-    encode(is_train, ~is_train)                     # test scored with the full train fit
+    tr = pd.DataFrame({"k": key[train_idx], "t": ts[train_idx], "y": y[train_idx]})
+
+    # One row per (bucket, timestamp): everything that happened in that bucket at that
+    # instant, aggregated so a whole simultaneous block can be excluded at once.
+    blocks = tr.groupby(["k", "t"], sort=True).y.agg(["sum", "count"]).reset_index()
+    blocks = blocks.sort_values(["k", "t"], kind="mergesort")
+    g = blocks.groupby("k", sort=False)
+    # cumsum shifted by one block = totals over all STRICTLY earlier timestamps
+    blocks["prior_sum"] = g["sum"].cumsum() - blocks["sum"]
+    blocks["prior_count"] = g["count"].cumsum() - blocks["count"]
+    blocks["enc"] = ((blocks["prior_sum"] + prior * smoothing)
+                     / (blocks["prior_count"] + smoothing))
+
+    enc = tr.merge(blocks[["k", "t", "enc"]], on=["k", "t"], how="left")["enc"]
+    out[train_idx] = enc.fillna(prior).to_numpy()
+
+    # --- everything else: the full train fit, which is entirely in the past ---------
+    agg = tr.groupby("k").y.agg(["sum", "count"])
+    sm = (agg["sum"] + prior * smoothing) / (agg["count"] + smoothing)
+    rest = ~is_train
+    out[rest] = pd.Series(key[rest]).map(sm).fillna(prior).to_numpy()
     return out
 
 
-def build(raw_dir: str, out_path: str, seed: int = 7, force: bool = False) -> pd.DataFrame:
+def _merchant_risk(df: pd.DataFrame, is_train: np.ndarray, ts: np.ndarray) -> np.ndarray:
+    """The (ProductCD, R_emaildomain) bucket's own past fraud rate. See above."""
+    key = (df.ProductCD.astype(str) + "|" + df.R_emaildomain.fillna("NA").astype(str)).to_numpy()
+    return causal_target_encode(key, df[LABEL_COLUMN].to_numpy(np.float64), is_train, ts)
+
+
+def build(raw_dir: str, out_path: str, force: bool = False) -> pd.DataFrame:
     """Derive the prepared parquet from the raw IEEE-CIS transactions.
 
     Idempotent: a usable parquet already at `out_path` is left alone. Re-running this
@@ -299,7 +341,7 @@ def build(raw_dir: str, out_path: str, seed: int = 7, force: bool = False) -> pd
 
     out["merchant_risk"] = _merchant_risk(
         pd.concat([raw[["ProductCD", "R_emaildomain"]], out[[LABEL_COLUMN]]], axis=1),
-        is_train, seed,
+        is_train, raw.TransactionDT.to_numpy(np.float64),
     )
 
     # The dataset's own anonymised entity-linkage counts, carried through unchanged.
@@ -344,8 +386,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default=os.path.expanduser("~/chhal-data/raw"))
     ap.add_argument("--out", default=os.path.expanduser("~/chhal-data/ieee_base.parquet"))
-    ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--force", action="store_true",
                     help="rebuild even if the prepared parquet already exists")
     a = ap.parse_args()
-    build(a.raw, a.out, a.seed, a.force)
+    build(a.raw, a.out, a.force)

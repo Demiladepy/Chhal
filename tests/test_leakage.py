@@ -164,5 +164,75 @@ def test_integer_features_are_integers_by_dtype_not_by_luck():
                 f"{V.vector_id}.{col} is {rows[col].dtype}, not an integer type")
 
 
+def _causal_encode():
+    """`scripts/` is not a package; import the encoder the way the scripts do."""
+    import importlib.util
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "prepare_ieee", root / "scripts" / "prepare_ieee.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["prepare_ieee"] = mod
+    spec.loader.exec_module(mod)
+    return mod.causal_target_encode
+
+
+def test_merchant_risk_encoding_cannot_see_the_future():
+    """A random K-fold target encoding stops a row encoding *itself*, which is the leak
+    everyone checks for, and leaves a second one open: on temporally ordered data the
+    other folds span the whole train window, so a January row is scored with outcomes
+    from June. The encoding must depend on strictly earlier rows only.
+
+    Tested by mutation rather than by inspection: flip a label at the end of time and
+    every earlier encoding must come back bit-identical."""
+    encode = _causal_encode()
+    n = 400
+    key = np.array(["A"] * (n // 2) + ["B"] * (n // 2))
+    ts = np.arange(n, dtype=np.float64)
+    rng = np.random.default_rng(0)
+    y = (rng.random(n) < 0.3).astype(np.float64)
+    is_train = np.ones(n, bool)
+
+    # the shrinkage target is a global scalar and is documented as non-causal, so pin it
+    # and test the thing that actually carries per-row information: the bucket history.
+    before = encode(key, y, is_train, ts, prior=0.3)
+
+    y2 = y.copy()
+    last_a = np.flatnonzero(key == "A")[-1]
+    y2[last_a] = 1.0 - y2[last_a]          # change the future
+    after = encode(key, y2, is_train, ts, prior=0.3)
+
+    earlier = ts < ts[last_a]
+    assert np.array_equal(before[earlier], after[earlier]), (
+        "changing a later outcome moved an earlier row's encoding — the feature is "
+        "reading the future")
+
+
+def test_merchant_risk_encoding_excludes_the_whole_simultaneous_block():
+    """Excluding only the row itself is not enough when several transactions in the same
+    bucket share a timestamp: they would encode each other, which is the same leak at a
+    smaller radius."""
+    encode = _causal_encode()
+    # one bucket, four rows, all at t=0, all fraudulent; nothing precedes them
+    key = np.array(["A"] * 4)
+    ts = np.zeros(4)
+    y = np.ones(4)
+    is_train = np.ones(4, bool)
+    out = encode(key, y, is_train, ts, smoothing=50.0, prior=0.1)
+    assert np.allclose(out, 0.1), (
+        f"simultaneous rows encoded each other: {out} != prior 0.1")
+
+
+def test_merchant_risk_encoding_does_accumulate_history():
+    """The causality guard must not have flattened the feature into a constant."""
+    encode = _causal_encode()
+    n = 200
+    key = np.array(["A"] * n)
+    ts = np.arange(n, dtype=np.float64)
+    y = np.ones(n)                          # a bucket that is always fraudulent
+    out = encode(key, y, np.ones(n, bool), ts, smoothing=5.0, prior=0.05)
+    assert out[0] < out[-1], "encoding never moves — no history is accumulating"
+    assert np.all(np.diff(out) >= -1e-12), "encoding is not monotone in a constant bucket"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

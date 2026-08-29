@@ -217,14 +217,31 @@ def test_fidelity_flags_off_manifold_attacks():
                     reason="run scripts/prepare_ieee.py to test the real-data path")
 def test_real_ieee_source_if_prepared():
     """The real path must load, split temporally, and carry the genuine fraud rate."""
+    import pandas as pd
+
     base = load_base_data(source="ieee")
     assert base.source == "ieee"
-    assert len(base.train) + len(base.test) == 590_540
-    total_fraud = base.train["is_fraud"].sum() + base.test["is_fraud"].sum()
-    assert total_fraud == 20_663, "not the genuine IEEE-CIS label set"
     assert list(base.legit_quantiles.columns) == FEATURE_COLUMNS
     # manifold must come from train only — never from rows the detector will be tested on
     assert base.feature_stats["amount"].loc[0.995] <= base.train["amount"].max()
+
+    # train + test no longer sum to the corpus: a 7-day delay period and the straddling
+    # accounts are deliberately held out of both. Assert against the parquet instead, or
+    # this test silently passes on a split that has quietly stopped purging anything.
+    raw = pd.read_parquet(DEFAULT_IEEE_PARQUET)
+    assert len(raw) == 590_540
+    assert raw["is_fraud"].sum() == 20_663, "not the genuine IEEE-CIS label set"
+    assert set(raw["split"]) == {"train", "test", "embargo", "straddle"}
+    assert len(base.train) + len(base.test) < len(raw), "nothing is being held out"
+
+    # the two holdouts, asserted rather than trusted
+    train_end = raw.loc[raw.split == "train", "_ts"].max()
+    test_start = raw.loc[raw.split == "test", "_ts"].min()
+    assert test_start - train_end >= 7 * 86_400, "delay period shorter than 7 days"
+
+    train_accounts = set(raw.loc[raw.split == "train", "_account"])
+    test_accounts = set(raw.loc[raw.split == "test", "_account"])
+    assert not (train_accounts & test_accounts), "an account appears in both train and test"
 
 
 if __name__ == "__main__":

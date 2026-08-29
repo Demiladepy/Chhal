@@ -41,7 +41,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from chhal.behaviour import HOUR_OFFSET, derive, hour_of   # noqa: E402
 from chhal.evaluation import threshold_for_fpr             # noqa: E402
-from prepare_ieee import CHANNEL_MAP, DOMESTIC_ADDR2, _download  # noqa: E402
+from prepare_ieee import (CHANNEL_MAP, DOMESTIC_ADDR2, _download,  # noqa: E402
+                          causal_target_encode)
 
 # HEAVY: ~13 GB peak RSS and ~45s, because the last tier fits a model on all 339
 # V-columns at once. That is inherent to the question this script asks, not an
@@ -82,20 +83,11 @@ def main() -> None:
 
     n = len(df)
 
-    def target_encode(key, k=50.0, folds=5, seed=7):
-        prior = y[is_tr].mean(); out = np.full(n, prior)
-        def enc(fit, app):
-            a = pd.DataFrame({"k": key[fit], "y": y[fit]}).groupby("k").y.agg(["sum", "count"])
-            sm = (a["sum"] + prior * k) / (a["count"] + k)
-            out[app] = pd.Series(key[app]).map(sm).fillna(prior).to_numpy()
-        rng = np.random.default_rng(seed); ti = np.flatnonzero(is_tr)
-        f = rng.integers(0, folds, len(ti))
-        for i in range(folds):
-            fit = np.zeros(n, bool); fit[ti[f != i]] = True
-            app = np.zeros(n, bool); app[ti[f == i]] = True
-            enc(fit, app)
-        enc(is_tr, ~is_tr)
-        return out
+    # Same encoder as the real pipeline, imported rather than reimplemented. This script
+    # used to carry its own random 5-fold copy, which meant the ablation was measuring a
+    # differently-built `merchant_risk` than the one the detector actually sees.
+    def target_encode(key, k=50.0):
+        return causal_target_encode(key, y, is_tr, ts, smoothing=k)
 
     counterparty = (df.ProductCD.astype(str) + "|" + df.R_emaildomain.fillna("NA")).to_numpy()
     BASE = pd.DataFrame({
