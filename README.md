@@ -189,25 +189,35 @@ The baseline catching almost nothing is not a broken detector — the benchmark 
 were optimised specifically to evade it, which is the optimizer doing its job.
 
 The claim that survives scrutiny is not this curve. It is the leave-one-out one, and it
-is much weaker: **43.1% on an attack family never seen in any form**, against 66.1% on
-families the detector was trained on — a **23.0-point** generalisation gap
+is much weaker: **41.0% on an attack family never seen in any form**, against 52.1% on
+families the detector was trained on — an **11.1-point** generalisation gap
 (`scripts/generalisation_check.py`, six vectors, post-purge split). Per family, held out:
 
 | held out | recall if trained on it | recall never seen |
 |---|---|---|
-| `mule_fanout` | 60.4% | 69.6% |
-| `upi_collect` | 61.0% | 64.6% |
-| `bustout` | 64.2% | 51.4% |
-| `threshold_hugging` | 73.2% | 36.0% |
-| `autopay_mandate` | 77.7% | 24.6% |
-| `card_testing` | 59.9% | **12.2%** |
+| `mule_fanout` | 50.0% | 65.7% |
+| `upi_collect` | 49.3% | 62.1% |
+| `bustout` | 47.1% | 46.8% |
+| `threshold_hugging` | 51.1% | 40.7% |
+| `autopay_mandate` | 56.4% | 30.5% |
+| `card_testing` | 58.6% | **0.4%** |
+
+**Both arms are scored on held-back campaigns, and that correction cost this section its
+headline.** An earlier version trained on the whole of every seen vector and then measured
+`recall if trained on it` on those same rows — resubstitution, which reported 66.1% for
+that arm and a 23.0-point gap. Splitting each vector by campaign first and scoring both
+arms on the held-back slice moves the seen arm to 52.1% and leaves the unseen arm roughly
+where it was (43.1% → 41.0%). The gap was therefore **half memorisation being counted as
+understanding**, and the honest figure is 11.1 points. The conclusion is unchanged in
+direction and much weaker in size.
 
 A detector trained on five fraud families does not thereby understand the sixth. But the
 ordering is not the one an earlier version of this file predicted — it claimed the
 stealthiest vector generalises worst, and that is now false. **`card_testing`, the loudest
-and most separable vector in the suite (KS 0.513, 44.6× the noise floor), is the one the
-detector fails hardest to reach when it has never seen it.** Distance from legitimate
-traffic does not predict transfer here any better than it predicts detection.
+and most separable vector in the suite (KS 0.483, 43.1× the noise floor), is the one the
+detector fails hardest to reach when it has never seen it** — 0.4% unseen, effectively
+nothing. Distance from legitimate traffic does not predict transfer here any better than
+it predicts detection.
 
 Two vectors — `mule_fanout` and `upi_collect` — score *higher* unseen than seen. That is
 not a good sign either: it means the other five carry enough of their signature that
@@ -352,7 +362,7 @@ python scripts/feature_ablation.py      # why the feature space looks the way it
                                         # HEAVY: ~13 GB peak RSS, reads the raw 683 MB CSV
 
 streamlit run dashboard/app.py        # the 3-panel live demo (replays results/)
-python -m pytest tests/ -q            # 84 tests: contract, leakage, optimizer, loop,
+python -m pytest tests/ -q            # 99 tests: contract, leakage, optimizer, loop,
                                       # fidelity, mitigation, operating points
 ```
 
@@ -483,6 +493,18 @@ inter-transaction gap against **this card's** baseline. With `mimic_host`, the s
 quantile levels are read off the host's own history, so a card that buys coffee gets a
 coffee-sized attack at coffee-buying intervals.
 
+**And it only actually does that 28.8% of the time.** Reading a distribution off a card
+needs at least `MIN_HISTORY_TO_MIMIC = 4` real transactions; below that `_host_gaps`
+returns nothing and the campaign silently uses the population bands instead. IEEE-CIS
+accounts are short — the benchmark host pool has a **median of two** real transactions —
+so per-victim mimicry engages on **28.8% of benchmark campaigns and 40.5% of train-side
+ones**, and the rest are population-band attacks wearing a per-victim label. The fallback
+was always documented; its rate was not, and the rate is the claim. `HostPool.describe`
+now prints it on every run, for the same reason the replay probe prints its own 7.5%: a
+disguise that engages on fewer than one campaign in three is a different thing from one
+that engages always, and this is a limit of the *data*, not of the code — a real attacker
+reading a two-line statement has no profile to copy either.
+
 **`mule_fanout` is a controlled experiment, not a fifth variation on speed and size.** Its
 defining property — one operator moving many accounts at once — is a property of the
 *set*, and the frozen feature space has no counterparty: no beneficiary id, no destination
@@ -548,7 +570,10 @@ therefore no graph to permute. That absence is what `mule_fanout` was built to m
 arriving from the other direction.
 
 **Per-victim mimicry does not survive its own ablation here.** 2.3 ± 2.6 points is not a
-finding. `threshold_hugging` sits near the floor with mimicry and without it, so a single-pass
+finding. Part of the reason is mechanical and worth naming: mimicry engages on only 28.8%
+of benchmark campaigns (above), so an ablation that switches it off can only change about
+a quarter of the rows and the effect it is looking for is diluted roughly threefold before
+any detector sees it. `threshold_hugging` sits near the floor with mimicry and without it, so a single-pass
 detector cannot tell them apart — the loop's per-vector recall does differ, but eight
 rounds of adaptation is not a controlled comparison and we are not going to quote it as
 one. The mechanism is still the right one on the merits; the evidence that it *matters* is
@@ -712,13 +737,13 @@ A judged criterion, so we quantify it ([`chhal/fidelity.py`](chhal/fidelity.py))
 
 - **On-manifold rate 100.00%** — by construction, and scoped to the four features the
   attacker directly sets, which is all the guardrail governs. Over **all 26** features it
-  is **98.17%**, and only **67.24%** of rows are fully inside the envelope on every
+  is **98.40%**, and only **68.47%** of rows are fully inside the envelope on every
   column. All three are reported, because quoting the first alone invites the obvious
   question of what the other twenty-two are doing. (The answer is that the behavioural
   block is *derived from a timeline*, not assigned, so clipping it would mean forbidding
   an attack from having the shape it really has — a card-testing run that probes forty
   times in ten minutes HAS a velocity no legitimate account shows.)
-- **Guardrail binding rate 33.44%** — the non-tautological number: the fraction of proposed
+- **Guardrail binding rate 35.52%** — the non-tautological number: the fraction of proposed
   perturbations that actually landed *outside* the manifold before clipping and had to be
   pulled back. This is the real evidence the guardrail does work — attacks push against
   the plausibility envelope, they don't just float freely inside it.
@@ -791,9 +816,13 @@ deployment base rate either. An isotonic calibrator is fitted on a temporal slic
 training window the detector never sees. That pool is then split in half — isotonic is
 **fitted** on one half and its error is **measured** on the other, because an isotonic fit
 scored on its own rows returns ECE 0.0000 by construction and that is a tautology, not a
-result. Measured honestly: ECE 0.0070 raw → 0.0069 calibrated on the held-back half (the
-raw LightGBM score is already close to calibrated here; what calibration buys is the
-*scale*, which is what gets multiplied by a dollar amount). `test_miscalibrated_scores_degrade_the_policy`
+result. Measured honestly: ECE **0.1768 raw → 0.0194 calibrated** on the held-back half — a
+9.1× reduction, and the reason the policy layer needs it. The raw LightGBM score is *not*
+already calibrated: on a pool with a 6.9% fraud rate it is badly overconfident, and the
+policy multiplies that number by a dollar amount, so an uncalibrated score misprices every
+decision it feeds. (An earlier version of this section read `0.0070 → 0.0069` and concluded
+that calibration only bought *scale*. Both numbers were wrong and so was the conclusion;
+`results/mitigation.json` has carried the correct pair all along.) `test_miscalibrated_scores_degrade_the_policy`
 locks this in: squash the scores monotonically — leaving every recall and AUC number
 identical — and the policy measurably loses money.
 
@@ -979,10 +1008,10 @@ at scoring time, not something an attacker sets, so `FEATURE_COLUMNS` stays froz
 
 ## Mounting attacks on real accounts
 
-The twelve hand-derived features caught **3.0%** of real IEEE-CIS fraud at a 0.1%
+The twelve hand-derived features caught **2.25%** of real IEEE-CIS fraud at a 0.1%
 false-positive budget. Adding the dataset's anonymised entity-linkage counts (`C1-C14` —
 how many addresses, devices, emails and cards associate with this card) takes that to
-**15.5%**. `scripts/feature_ablation.py` (heavy: ~13 GB peak RSS, ~45s, and it reads the
+**15.46%**. `scripts/feature_ablation.py` (heavy: ~13 GB peak RSS, ~45s, and it reads the
 raw 683 MB CSV rather than the prepared parquet), on the same split as everything else —
 temporal cut, 7-day delay period, straddling accounts purged:
 

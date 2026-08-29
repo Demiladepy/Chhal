@@ -18,10 +18,16 @@ them honestly:
 
   2. **Per-vector distribution distance from legitimate traffic** (two-sample KS vs legit).
      Fraud is *supposed* to differ from normal — that difference is the fraud signal, not a
-     simulation defect. The insight the number captures: `threshold_hugging`
-     sits **closest to legit** (it mimics normal behaviour — that is why it is hardest to
-     catch), while overt vectors (`bustout`, `card_testing`) sit further out by design. Low
-     KS on the mimicry vector is a quantified proof the mimicry is real.
+     simulation defect. Overt vectors (`bustout`, `card_testing`) sit further out by design,
+     and the mimicry vector's low KS is quantified evidence the mimicry is real.
+
+     What this docstring used to claim, and what the table it writes refutes: that
+     `threshold_hugging` sits CLOSEST to legit and is therefore hardest to catch.
+     `results/fidelity_per_vector.csv` says `autopay_mandate` is closer on both measures
+     (0.158 / 0.270 against 0.175 / 0.284) while carrying no `mimic_host` at all, and the
+     README withdraws the ordering claim outright: across this table, distance from legit
+     does not predict detection. The claim is removed here rather than left sitting above
+     the number that kills it.
 
 Note: these numbers are now measured against REAL payment data by default — 590,540
 IEEE-CIS card transactions (Vesta), 3.499% fraud, over 182 days, with a temporal split.

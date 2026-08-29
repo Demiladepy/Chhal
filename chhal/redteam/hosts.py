@@ -150,7 +150,23 @@ class HostPool:
             lo, hi = max(hi - 1, 0), max(hi, 1)
         return self._host(int(self._by_last[int(rng.integers(lo, hi))]))
 
+    def mimicry_engagement(self) -> float:
+        """Share of hosts with enough history for per-victim mimicry to actually fire.
+
+        `mimic_host` needs MIN_HISTORY_TO_MIMIC real transactions to read a distribution
+        off; below that `_host_gaps` returns None and `_host_amounts` is never called, and
+        the campaign silently uses the POPULATION bands instead. That fallback is
+        documented, but its rate was not, and the rate is the whole story: IEEE-CIS
+        accounts are short, so on the benchmark pool the mimicry vectors mimic under a
+        third of the time. Published here rather than left implicit, for the same reason
+        the replay probe publishes its own feasibility rate — a disguise that engages on
+        29% of campaigns is a different claim from one that engages always.
+        """
+        from .campaign import MIN_HISTORY_TO_MIMIC
+        return float(np.mean((self._ends - self._starts) >= MIN_HISTORY_TO_MIMIC))
+
     def describe(self) -> str:
         sizes = self._ends - self._starts
         return (f"{len(self):,} eligible host accounts "
-                f"(median {int(np.median(sizes))} real transactions, max {int(sizes.max())})")
+                f"(median {int(np.median(sizes))} real transactions, max {int(sizes.max())}"
+                f"; per-victim mimicry engages on {self.mimicry_engagement():.1%})")

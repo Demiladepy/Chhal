@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN            # noqa: E402
 from chhal.data import load_base_data                               # noqa: E402
 from chhal.detector import Detector                                 # noqa: E402
-from chhal.evaluation import threshold_for_fpr                      # noqa: E402
+from chhal.evaluation import split_attacks, threshold_for_fpr       # noqa: E402
 from chhal.optimizer import EvasionOptimizer                        # noqa: E402
 from chhal.redteam import ALL_VECTORS                               # noqa: E402
 from chhal.redteam.base import BaseProfile                          # noqa: E402
@@ -33,6 +33,15 @@ from chhal.redteam.hosts import HostPool                            # noqa: E402
 
 N_PER_VECTOR = 500
 TARGET_FPR = 0.001          # 0.1% of legitimate traffic flagged
+
+# Every vector is split by CAMPAIGN before anything is trained, and the seen arm is scored
+# on the half that was held back. This is not a refinement, it is the difference between a
+# result and a tautology: the earlier version trained on the whole of each seen vector and
+# then scored `recall_if_seen` on those same rows, so that arm was resubstitution and the
+# generalisation gap it produced was inflated by however much the detector had memorised.
+# Both arms now use the held-back slice, so the two differ only in what was trained on and
+# not in how they are measured.
+HELDOUT_FRAC = 0.4          # matches the loop's own train/heldout split
 
 
 def recall_at_fpr(det, legit, attacks, fpr=TARGET_FPR):
@@ -66,20 +75,30 @@ def main() -> None:
     print(f"[hosts] {hosts.describe()}")
     for V in ALL_VECTORS:
         v = V().calibrate(profile, hosts)
-        adapted[v.vector_id] = opt.optimize(v.batch(N_PER_VECTOR, 0, rng), baseline, rng).transactions
+        adapted[v.vector_id] = opt.optimize(v.batch(N_PER_VECTOR, 0, rng), baseline, rng)
     ids = list(adapted)
+
+    # Split by campaign once, up front, so a vector's train and scored rows never share a
+    # compromised account. Whole campaigns move together because every row of one carries
+    # that host's age, merchant history and fourteen linkage counts.
+    parts = {vid: split_attacks([b], HELDOUT_FRAC, rng)[:2] for vid, b in adapted.items()}
+    print(f"[split] per vector: {len(parts[ids[0]][0])} train rows, "
+          f"{len(parts[ids[0]][1])} scored rows (by campaign, {HELDOUT_FRAC:.0%} held back)")
 
     rows = []
     for held in ids:
-        seen = [adapted[i] for i in ids if i != held]
+        seen = [parts[i][0] for i in ids if i != held]      # TRAIN slices only
         pool = pd.concat([base.train] + [d.assign(**{LABEL_COLUMN: 1}) for d in seen],
                          ignore_index=True)
         det = Detector(seed=7).fit(pool, LABEL_COLUMN)
 
-        r_unseen, _ = recall_at_fpr(det, legit_eval, adapted[held])
-        r_seen = float(np.mean([recall_at_fpr(det, legit_eval, adapted[i])[0]
+        # Both arms are the held-back slice. The held-out vector's train slice is simply
+        # never used — nothing was fitted on it — which is what "never seen in any form"
+        # has to mean if the comparison is to be procedurally identical on both sides.
+        r_unseen, _ = recall_at_fpr(det, legit_eval, parts[held][1])
+        r_seen = float(np.mean([recall_at_fpr(det, legit_eval, parts[i][1])[0]
                                 for i in ids if i != held]))
-        r_base, _ = recall_at_fpr(baseline, legit_eval, adapted[held])
+        r_base, _ = recall_at_fpr(baseline, legit_eval, parts[held][1])
         rows.append({"held_out_vector": held,
                      "recall_baseline": round(r_base, 4),
                      "recall_if_seen(avg of the rest)": round(r_seen, 4),

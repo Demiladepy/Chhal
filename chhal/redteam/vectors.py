@@ -61,7 +61,19 @@ class ThresholdHugging(AttackVector):
 
     It should therefore be the vector with the lowest KS distance from real traffic and
     the lowest recall, and the per-vector fidelity table is where that is checked rather
-    than asserted.
+    than asserted. Half of that prediction is false: `autopay_mandate` is closer to legit
+    on both KS measures despite carrying no mimicry at all, and the ordering claim is
+    withdrawn in the README. The low-recall half holds.
+
+    The other thing this docstring used to leave implicit: mimicry needs
+    MIN_HISTORY_TO_MIMIC real transactions to read a distribution off, and IEEE-CIS
+    accounts are short. On the benchmark host pool it actually engages on 28.8% of
+    campaigns (40.5% train-side); the rest fall back to the population bands this vector
+    exists to argue against. `HostPool.mimicry_engagement` measures it and
+    `HostPool.describe` prints it every run. That is a limit of the data rather than of
+    the idea — an attacker holding a two-transaction statement has nothing to profile
+    either — but it caps what this vector can demonstrate here, and it is a large part of
+    why its ablation lands inside the noise.
     """
 
     new_payee_rate = 0.30    # the victim's usual payees, with the occasional new one

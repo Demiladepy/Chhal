@@ -538,3 +538,26 @@ def test_the_probe_cannot_reach_the_shipped_suite():
         f"{offenders} take the replay path, so the headline numbers no longer come from "
         "the code that produced them"
     )
+
+
+def test_the_pool_reports_how_often_mimicry_actually_engages(base):
+    """`mimic_host` is the flagship vector's entire claim, and on short histories it does
+    not happen: `_host_gaps` returns None below MIN_HISTORY_TO_MIMIC and the campaign
+    quietly uses the population bands — the very thing the vector argues against.
+
+    The fallback was always documented; the RATE was not, which is what made it a problem.
+    A disguise that engages on fewer than one campaign in three is a different claim from
+    one that engages always, so the rate is computed here and printed by `describe()` on
+    every run rather than left for a reader to derive.
+    """
+    from chhal.redteam.campaign import MIN_HISTORY_TO_MIMIC
+
+    pool = HostPool(base.train)
+    rate = pool.mimicry_engagement()
+    sizes = pool._ends - pool._starts
+    assert rate == pytest.approx(float(np.mean(sizes >= MIN_HISTORY_TO_MIMIC)))
+    assert 0.0 <= rate <= 1.0
+    assert "mimicry engages on" in pool.describe(), (
+        "the engagement rate has to be printed with the pool, not buried in a method "
+        "nobody calls"
+    )

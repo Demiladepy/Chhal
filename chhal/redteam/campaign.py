@@ -64,9 +64,18 @@ class TemporalProfile:
 
     With it on, the same quantile levels are applied to the HOST's own history: the
     amounts are that card's own middle spend, and the gaps are that card's own cadence.
-    A card that buys coffee gets a coffee-sized attack. Needs a few real transactions to
-    read a distribution off; below that it falls back to the population bands, so a
-    thin-history host degrades rather than producing nonsense.
+    A card that buys coffee gets a coffee-sized attack. Needs MIN_HISTORY_TO_MIMIC real
+    transactions to read a distribution off; below that it falls back to the population
+    bands, so a thin-history host degrades rather than producing nonsense.
+
+    How often that fallback fires is not a footnote, and it is now printed rather than
+    implied. IEEE-CIS accounts are short — the benchmark host pool has a MEDIAN of two
+    real transactions — so per-victim mimicry actually engages on 28.8% of benchmark
+    campaigns and 40.5% of train-side ones. The rest are population-band attacks wearing
+    a per-victim label. `HostPool.mimicry_engagement` reports it and `HostPool.describe`
+    prints it on every run, because "hides in the victim's own profile" and "hides in the
+    crowd two campaigns out of three" are different claims and only one of them is true
+    here.
     """
 
     replay_host: bool = False
