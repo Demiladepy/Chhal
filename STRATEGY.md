@@ -97,7 +97,7 @@ Lock these two structs and the field lists on day 1. Everything else can change.
 
 ---
 
-## Pillar 1 — IDENTIFY  (breadth = points; catalog 21, build 5)
+## Pillar 1 — IDENTIFY  (breadth = points; catalog 21, build 6)
 
 A taxonomy of where **GenAI specifically** changes payment fraud. The full list below goes
 in the write-up (it is what "diversity of attacks" is scored on); the starred ones are
@@ -106,7 +106,7 @@ implemented and run in the live loop.
 **Two tracks — and be explicit about which is which:**
 
 - **★ LIVE-LOOP vectors** emit transaction features in the frozen feature space and flow
-  through the LightGBM detector. These *are* the closed loop and the live demo. **Five are
+  through the LightGBM detector. These *are* the closed loop and the live demo. **Six are
   built** — see `chhal/redteam/vectors.py`, `ALL_VECTORS`.
 - **◆ SHOWCASE vectors** are text/agent/media attacks (voice clone, prompt injection,
   deepfake). They do **not** emit tabular features, so they cannot feed the tabular
@@ -125,6 +125,9 @@ implemented and run in the live loop.
 **Authorized Push Payment / social engineering**
 - ★ **UPI collect-request scam** (`upi_collect`, India rail — see edge below) — the victim
   approves, then the money hops through fresh VPAs within minutes — **live-loop**
+- ★ **Autopay-mandate hijack** (`autopay_mandate`) — a recurring-mandate takeover that pays
+  monthly, flat, and near-constant, tripping no velocity feature — the opposite blind spot
+  from every burst vector — **live-loop**
 - Voice-clone CEO / "hi mum" transfers — ◆ showcase
 - Deepfake video call impersonating a finance approver on a live call — ◆ showcase
 - AI call-center agent passing knowledge-based auth (account takeover) — ◆ showcase
@@ -266,7 +269,7 @@ it doesn't compute them live.
 
 | Criterion | How we win it |
 |---|---|
-| Diversity of attacks | 21-vector GenAI taxonomy (5 built and running in the loop, 16 catalogued), live-loop vs showcase clearly split, India rails included |
+| Diversity of attacks | 21-vector GenAI taxonomy (6 built and running in the loop, 15 catalogued), live-loop vs showcase clearly split, India rails included |
 | Fidelity of simulation | Real IEEE-CIS base + distribution-match evidence (KS-test) + plausibility-constrained attacks mounted on real accounts |
 | Detection efficacy | LightGBM + gain-based feature importance; F1/AUC/FP reported per iteration on **held-out novel attacks** |
 | Novelty | the **closed adaptive loop** + constrained evasion optimizer + agentic red team + UPI grounding |
