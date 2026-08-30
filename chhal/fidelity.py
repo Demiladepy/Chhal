@@ -82,6 +82,15 @@ KS_NULL_FLOOR = {
 # floor was not measured per column; the n=500 mean is the honest stand-in, and those
 # columns match legit by construction anyway.
 KS_NULL_FLOOR_DEFAULT = 0.024
+# CAVEAT (regenerate before quoting absolute ratios): the values above were produced by an
+# estimator that drew the second legit sample from WITHIN the reference set (ref = full
+# legit, sample = legit.sample(500)). Because the sample was a subset of the reference the
+# two ECDFs share rows, which biases the two-sample KS DOWNWARD by ~1.4x — so these floors
+# are ~1.4x too LOW and every degradation_ratio built on them is ~1.4x too HIGH. The bias is
+# uniform across features, so the RELATIVE ordering (threshold_hugging closest to legit, the
+# mimicry claim) is unaffected; only the absolute multiples move. scripts/audit/ks_null_floor.py
+# now measures the floor from two DISJOINT legit samples at n=m=500 — rerun it on real
+# IEEE-CIS data and replace the constants above with its output.
 # "Matches legit" now means "within this many multiples of that feature's own noise
 # floor" rather than "under a fixed 0.1".
 #

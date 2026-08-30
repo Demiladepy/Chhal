@@ -41,7 +41,7 @@ DECISION_THRESHOLD = 0.5   # the naive cutoff, kept only as a comparison baselin
 
 
 def campaign_ids(b: AttackBatch) -> "np.ndarray | None":
-    """Which compromised account each of `b`'s attack rows belongs to, or None.
+    """Which campaign (`entity`) each of `b`'s attack rows belongs to, or None.
 
     `AttackBatch.validate` guarantees the attack rows of the timeline correspond
     one-to-one and in order with the feature rows, so the campaign label is just the
@@ -54,26 +54,49 @@ def campaign_ids(b: AttackBatch) -> "np.ndarray | None":
     return ent if len(ent) == len(b.transactions) else None
 
 
+def host_ids(b: AttackBatch) -> "np.ndarray | None":
+    """Which real account each of `b`'s attack rows was mounted on, or None.
+
+    The leakage unit is the HOST ACCOUNT, not the campaign `entity`. Hosts are sampled
+    with replacement, so two campaigns in one batch can compromise the SAME account —
+    the coordinated fan-out, drawing from a narrow live window, does it about once a
+    batch at 400 attacks. Those two campaigns then share all sixteen inherited features
+    (age, merchant history, fourteen linkage counts), so if one is trained on and the
+    other held out, the "novel" side is scoring an account the detector already learned.
+    `entity`-disjoint is not account-disjoint; the split has to key on this.
+    """
+    if b.timeline is None or "host_account" not in b.timeline.columns:
+        return None
+    acc = b.timeline.loc[b.timeline["is_attack"].astype(bool), "host_account"].to_numpy()
+    return acc if len(acc) == len(b.transactions) else None
+
+
 def split_attacks(
     batches: List[AttackBatch], heldout_frac: float, rng: np.random.Generator
 ):
     """Split each vector's rows into (train, heldout_novel), preserving vector labels.
 
-    The split is by CAMPAIGN, not by row. A campaign is one compromised host account
-    and its 3-60 transactions, and every one of those rows carries that account's
+    The split is by HOST ACCOUNT, not by row. Each attack row carries its host's
     inherited age, merchant history and fourteen linkage counts. Splitting rows at
     random left 98.1% of the "never trained on" rows sharing a host with a row the
     detector had just learned, so `heldout_novel` was scoring memorised accounts at
-    least as much as novel attacks. Whole campaigns go to one side or the other.
+    least as much as novel attacks. Every row of a given host goes to one side.
+
+    Keying on the host account rather than the campaign `entity` matters: hosts are
+    sampled with replacement, so two campaigns can share one account, and an
+    entity-level split would then straddle that account (measured: about one host per
+    coordinated batch at 400 attacks). `host_ids` collapses those to one unit.
 
     Batches with no timeline (hand-built, in tests) fall back to the row split, and a
-    vector that produced a single campaign cannot be split at all — it goes to train,
+    host that produced a single campaign cannot be split at all — it goes to train,
     which is the honest outcome rather than a fabricated holdout.
     """
     train_frames, heldout_frames, heldout_vectors = [], [], []
     for b in batches:
         n = len(b)
-        ent = campaign_ids(b)
+        ent = host_ids(b)
+        if ent is None:
+            ent = campaign_ids(b)
         if ent is None:
             idx = rng.permutation(n)
             k = int(n * (1 - heldout_frac))
