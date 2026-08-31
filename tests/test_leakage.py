@@ -1,7 +1,7 @@
 """The tests that were missing when it mattered.
 
 A mutation run over this project killed 8 of 17 mutants. Every survivor was a
-LEAKAGE-DISCIPLINE mutation — benchmark rows injected into training, the held-out
+LEAKAGE-DISCIPLINE mutation, benchmark rows injected into training, the held-out
 slice collapsed onto the train slice, the train/test account exclusion deleted, the
 temporal split swapped for a random one. The suite was strong on leaf primitives and
 blind on the wiring, which is precisely where the headline claims live.
@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN                  # noqa: E402
 from chhal.data import load_base_data                                     # noqa: E402
 from chhal.detector import Detector                                       # noqa: E402
-from chhal.evaluation import campaign_ids, split_attacks                  # noqa: E402
+from chhal.evaluation import campaign_ids, host_ids, split_attacks       # noqa: E402
 from chhal.loop import LoopConfig, run_loop                               # noqa: E402
 from chhal.redteam import ALL_VECTORS                                     # noqa: E402
 from chhal.redteam.base import BaseProfile                                # noqa: E402
@@ -45,7 +45,7 @@ def loop_result():
 def test_not_one_benchmark_row_reaches_the_training_pool(loop_result):
     """The headline is benchmark recall. If a benchmark row can be trained on, the
     headline measures memory. Mutating the loop to inject them left every other test
-    green — recall simply rose."""
+    green, recall simply rose."""
     audit = loop_result.leakage_audit
     assert audit["benchmark_rows"] > 0, "nothing was benchmarked; the audit is vacuous"
     assert audit["benchmark_rows_in_training_pool"] == 0, audit
@@ -112,6 +112,48 @@ def test_a_campaign_never_straddles_the_train_heldout_boundary():
             f"{b.vector_id}: {len(straddling)} campaigns have rows on both sides")
 
 
+def test_a_host_account_never_straddles_the_train_heldout_boundary():
+    """The campaign test above passes even when the split keys on the campaign, because
+    host-disjointness implies campaign-disjointness but not the reverse. Hosts are drawn
+    WITH replacement, so two campaigns can land on one account; keying the split on the
+    campaign then puts that account on both sides and the sixteen inherited features go
+    with it. Mutating `split_attacks` back to `campaign_ids` must fail here.
+    """
+    base = load_base_data(seed=11, **SMALL)
+    rng = np.random.default_rng(11)
+    profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
+    hosts = HostPool(base.train)
+    batches = [V().calibrate(profile, hosts).batch(200, 1, rng) for V in ALL_VECTORS]
+
+    tr, ho, _ = split_attacks(batches, 0.4, rng)
+    tr_keys = set(map(tuple, np.round(tr[FEATURE_COLUMNS].to_numpy(float), 9)))
+    ho_keys = set(map(tuple, np.round(ho[FEATURE_COLUMNS].to_numpy(float), 9)))
+
+    shared_seen = 0
+    for b in batches:
+        acc = host_ids(b)
+        assert acc is not None, f"{b.vector_id} lost its timeline; the split cannot be honest"
+        camp = campaign_ids(b)
+        rows = np.round(b.transactions[FEATURE_COLUMNS].to_numpy(float), 9)
+        side, campaigns_per_host = {}, {}
+        for a, c, row in zip(acc, camp, map(tuple, rows)):
+            campaigns_per_host.setdefault(a, set()).add(c)
+            if row in tr_keys:
+                side.setdefault(a, set()).add("train")
+            if row in ho_keys:
+                side.setdefault(a, set()).add("heldout")
+        straddling = [a for a, s in side.items() if len(s) > 1]
+        assert not straddling, (
+            f"{b.vector_id}: {len(straddling)} host accounts have rows on both sides")
+        shared_seen += sum(1 for v in campaigns_per_host.values() if len(v) > 1)
+
+    assert shared_seen > 0, (
+        "no host carried two campaigns in this run, so the assertion above cannot tell a "
+        "host-keyed split from a campaign-keyed one. The test proves nothing; raise the "
+        "batch size or reseed"
+    )
+
+
 def test_a_single_campaign_cannot_be_split_and_does_not_pretend_to_be():
     """The degenerate case, made explicit: one campaign goes to train whole. Faking a
     holdout out of its own rows is exactly the thing this split exists to stop."""
@@ -128,7 +170,7 @@ def test_a_single_campaign_cannot_be_split_and_does_not_pretend_to_be():
 
 def test_the_detector_is_deterministic_at_a_fixed_seed():
     """`random_state` could be deleted and nothing noticed. Every paired comparison in
-    this project — the ablation, the ensemble check, the arms-race curve — reads a
+    this project. The ablation, the ensemble check, the arms-race curve, reads a
     difference between two runs and would silently be reading noise instead."""
     base = load_base_data(seed=2, **SMALL)
     X = base.test[FEATURE_COLUMNS]
@@ -137,7 +179,7 @@ def test_the_detector_is_deterministic_at_a_fixed_seed():
     assert np.array_equal(a, b), "same seed, different scores"
     c = Detector(seed=12).fit(base.train, LABEL_COLUMN).score(X)
     assert not np.array_equal(a, c), (
-        "different seeds give identical scores — the seed is not wired to anything")
+        "different seeds give identical scores. The seed is not wired to anything")
 
 
 def test_the_base_split_is_temporal_not_random():
@@ -203,7 +245,7 @@ def test_merchant_risk_encoding_cannot_see_the_future():
 
     earlier = ts < ts[last_a]
     assert np.array_equal(before[earlier], after[earlier]), (
-        "changing a later outcome moved an earlier row's encoding — the feature is "
+        "changing a later outcome moved an earlier row's encoding. The feature is "
         "reading the future")
 
 
@@ -230,7 +272,7 @@ def test_merchant_risk_encoding_does_accumulate_history():
     ts = np.arange(n, dtype=np.float64)
     y = np.ones(n)                          # a bucket that is always fraudulent
     out = encode(key, y, np.ones(n, bool), ts, smoothing=5.0, prior=0.05)
-    assert out[0] < out[-1], "encoding never moves — no history is accumulating"
+    assert out[0] < out[-1], "encoding never moves. No history is accumulating"
     assert np.all(np.diff(out) >= -1e-12), "encoding is not monotone in a constant bucket"
 
 
