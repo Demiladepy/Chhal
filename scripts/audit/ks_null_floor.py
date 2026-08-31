@@ -15,7 +15,7 @@ print("real fraud full n=%d: %.4f" % (len(fraud), mks(legit, fraud)))
 rng = np.random.default_rng(0)
 
 # The legit-vs-legit null floor must be TWO INDEPENDENT legit samples. The earlier version
-# used ref=FULL legit vs samp=legit.sample(n) — i.e. the sample was a SUBSET of the
+# used ref=FULL legit vs samp=legit.sample(n), i.e. the sample was a SUBSET of the
 # reference. Shared rows constrain the two ECDFs toward each other and bias the KS DOWNWARD
 # by ~1.4x (verified: 0.038 overlapping vs 0.053 disjoint at n=500 on a standard normal;
 # ~1.44x on a 3-category discrete feature). Draw two DISJOINT legit sub-samples instead.
@@ -36,7 +36,7 @@ for n in (500, 1000, 5100):
     print(f"n={n:5d}  real-fraud mean_ks={np.mean(v):.4f} (sd {np.std(v):.4f})   "
           f"NULL floor legit-vs-legit={np.mean(v0):.4f} (sd {np.std(v0):.4f})")
 
-# per-feature null floor at n=m=500 — two DISJOINT 500-row legit samples. This is the
+# per-feature null floor at n=m=500. Two DISJOINT 500-row legit samples. This is the
 # measurement that anchors KS_NULL_FLOOR / KS_NULL_FLOOR_N=500 in chhal/fidelity.py, so it
 # must be done at n=m=500 with independent samples (ks_null_floor() rescales to other n,m).
 print("\nper-feature NULL floor at n=m=500 (two INDEPENDENT legit samples, %d reps):" % REPS)
