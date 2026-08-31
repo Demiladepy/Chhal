@@ -1,4 +1,4 @@
-"""Tests for timeline-derived features — the defect Fix 2 existed to remove.
+"""Tests for timeline-derived features. The defect Fix 2 existed to remove.
 
 Before campaigns, `velocity_*`, `time_since_last_txn_min` and `amount_to_avg_ratio` were
 sampled independently, so 100% of `threshold_hugging`'s rows were physically impossible:
@@ -83,7 +83,7 @@ def test_campaigns_return_exactly_the_rows_asked_for_and_no_history():
 
 def test_hour_and_day_of_week_come_from_the_timestamps():
     """hour_of defaults to the shared HOUR_OFFSET, so real data and generated campaigns
-    read the same clock — they briefly did not, and every generated hour was five hours
+    read the same clock. They briefly did not, and every generated hour was five hours
     out without anything failing."""
     from chhal.behaviour import HOUR_OFFSET
     assert HOUR_OFFSET == -5

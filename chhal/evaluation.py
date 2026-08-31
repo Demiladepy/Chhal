@@ -1,24 +1,24 @@
-"""The evaluation protocol — the part that turns a pretty chart into a defensible one.
+"""The evaluation protocol. The part that turns a pretty chart into a defensible one.
 
 Two questions get answered here, and they are separate.
 
 **Is the improvement real, or circular?** The red team optimises against our detector,
-we retrain on those attacks, then we score — of course it improves. The answer is the
+we retrain on those attacks, then we score, of course it improves. The answer is the
 held-out split: attacks are split into `train` (the detector may learn them) and
 `heldout_novel` (the detector NEVER trains on them). Everything reported is measured on
-`heldout_novel`. For the stronger version of the same question — generalisation to a
-whole attack FAMILY never seen in any form — see `scripts/generalisation_check.py`.
+`heldout_novel`. For the stronger version of the same question, generalisation to a
+whole attack FAMILY never seen in any form, see `scripts/generalisation_check.py`.
 
 **Is the number quotable?** Not at a 0.5 threshold, and not as ROC AUC. No payments
 system decides at `score >= 0.5`; they are tuned to a false-positive budget, because
 flagging good customers is the expensive failure. And at 3.5% fraud prevalence ROC AUC
-is flattered by an enormous true-negative pile — 0.999 there is unremarkable. So the
+is flattered by an enormous true-negative pile, 0.999 there is unremarkable. So the
 headline metrics are:
 
   * **recall at a fixed false-positive rate** (0.1% / 0.5% / 1% of legitimate traffic)
-    — "inside the budget we can actually afford, how much fraud do we catch?"
-  * **PR AUC** (average precision) — the summary that stays honest under imbalance.
-  * **alert rate** — what share of ALL traffic the operating point flags, which is the
+   : "inside the budget we can actually afford, how much fraud do we catch?"
+  * **PR AUC** (average precision). The summary that stays honest under imbalance.
+  * **alert rate**. What share of ALL traffic the operating point flags, which is the
     number that decides whether the queue behind it is staffable.
 
 The 0.5-threshold precision/recall/F1 are still computed, so the two can be compared
@@ -58,8 +58,8 @@ def host_ids(b: AttackBatch) -> "np.ndarray | None":
     """Which real account each of `b`'s attack rows was mounted on, or None.
 
     The leakage unit is the HOST ACCOUNT, not the campaign `entity`. Hosts are sampled
-    with replacement, so two campaigns in one batch can compromise the SAME account —
-    the coordinated fan-out, drawing from a narrow live window, does it about once a
+    with replacement, so two campaigns in one batch can compromise the SAME account.
+    The coordinated fan-out, drawing from a narrow live window, does it about once a
     batch at 400 attacks. Those two campaigns then share all sixteen inherited features
     (age, merchant history, fourteen linkage counts), so if one is trained on and the
     other held out, the "novel" side is scoring an account the detector already learned.
@@ -88,7 +88,7 @@ def split_attacks(
     coordinated batch at 400 attacks). `host_ids` collapses those to one unit.
 
     Batches with no timeline (hand-built, in tests) fall back to the row split, and a
-    host that produced a single campaign cannot be split at all — it goes to train,
+    host that produced a single campaign cannot be split at all. It goes to train,
     which is the honest outcome rather than a fabricated holdout.
     """
     train_frames, heldout_frames, heldout_vectors = [], [], []
@@ -126,7 +126,7 @@ def threshold_for_fpr(legit_proba: np.ndarray, fpr: float) -> float:
     boosted ensemble emits large blocks of identical scores; the quantile routinely
     lands *inside* one, and `>=` then sweeps the whole block in. Measured on this
     detector, that reported recall "at a 0.1% budget" while the threshold was really
-    flagging 43.9% of legitimate traffic — a budget quoted, not honoured.
+    flagging 43.9% of legitimate traffic, a budget quoted, not honoured.
 
     So walk the distinct scores and take the lowest one whose realised rate actually
     fits. If even the single highest block busts the budget, return a threshold above
@@ -145,7 +145,7 @@ def threshold_for_fpr(legit_proba: np.ndarray, fpr: float) -> float:
 
 def recall_at_fpr(legit_proba: np.ndarray, attack_proba: np.ndarray,
                   fpr: float) -> Tuple[float, float, float]:
-    """Recall and threshold at `fpr` — plus the false-positive rate actually realised.
+    """Recall and threshold at `fpr`, plus the false-positive rate actually realised.
 
     The third value exists so the budget can be checked rather than trusted. It is at
     most `fpr` by construction of `threshold_for_fpr`, and reporting it is what makes
@@ -169,7 +169,7 @@ def evaluate(
 ) -> ScoreReport:
     """Score the detector on legit (label 0) + attack (label 1) rows.
 
-    `real_traffic`, when given, is the untouched real test set — legitimate rows AND
+    `real_traffic`, when given, is the untouched real test set, legitimate rows AND
     real fraud, no generated attacks. Two numbers come off it, and neither can be got
     from the scored mixture:
 

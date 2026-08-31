@@ -2,7 +2,7 @@
 
 Each vector knows how to render a *storyline* (the GenAI narrative a judge reads) and a
 *transaction pattern* (rows in the frozen feature space). The evasion optimizer then
-adapts the pattern against the current detector — that adaptation is the loop.
+adapts the pattern against the current detector. That adaptation is the loop.
 
 Why a vector describes a campaign rather than a pile of rows
 ------------------------------------------------------------
@@ -12,16 +12,16 @@ cannot exist. It did: 100% of `threshold_hugging`'s rows claimed activity in the
 hours while also claiming the previous transaction was days ago, against 0% of real
 traffic. A judge who checks that once stops believing the rest.
 
-So a vector now declares a `TemporalProfile` — accounts, transactions each, gaps, amount
-trajectory — and the base class lays out a real timeline, then DERIVES the behavioural
+So a vector now declares a `TemporalProfile`, accounts, transactions each, gaps, amount
+trajectory, and the base class lays out a real timeline, then DERIVES the behavioural
 features from it with `chhal.behaviour.derive`, the same function used on the 590,540
 real transactions. `hour` and `day_of_week` come from the timestamps too. Consistency is
 not checked afterwards; it cannot be violated.
 
 Each campaign is mounted on a REAL, never-fraudulent account (see hosts.py), so the
 history `amount_to_avg_ratio` is measured against is that card's actual spend, and the
-issuer-side context the attacker cannot control — account age, merchant risk, and the
-dataset's anonymised entity-linkage counts — is inherited rather than invented. That is
+issuer-side context the attacker cannot control, account age, merchant risk, and the
+dataset's anonymised entity-linkage counts, is inherited rather than invented. That is
 what let the feature space grow to include the linkage block at all: those counts carry
 most of the real-fraud signal and cannot be reconstructed, so a generated attacker could
 only have faked them.
@@ -29,7 +29,7 @@ only have faked them.
 Why vectors no longer contain hand-picked numbers
 -------------------------------------------------
 A vector used to say `amount ~ lognormal(6.6, 0.5)`. Against the real IEEE-CIS
-population that is a median of ~735 where real traffic sits at 68.50 — every row would
+population that is a median of ~735 where real traffic sits at 68.50. Every row would
 land outside the plausibility manifold and be clipped flat onto the boundary, which
 destroys both the vector's meaning and any fidelity claim made about it.
 
@@ -37,7 +37,7 @@ So a vector now describes itself in the only terms that survive a change of data
 *where in the legitimate population it sits*. `profile.band("amount", 0.35, 0.75)`
 means "amounts typical of the middle of real traffic". Values come back through the
 inverse CDF of real legitimate transactions, so every attack row is built out of values
-that genuinely occur — before the optimizer has adapted anything. Point the loader at a
+that genuinely occur, before the optimizer has adapted anything. Point the loader at a
 different dataset and the vectors re-scale themselves.
 """
 from __future__ import annotations
@@ -68,7 +68,7 @@ class BaseProfile:
              rng: np.random.Generator) -> np.ndarray:
         """n values drawn from real legit traffic, restricted to the [lo, hi] quantile band.
 
-        lo/hi are quantile levels in [0, 1], not raw values — that is what makes a
+        lo/hi are quantile levels in [0, 1], not raw values. That is what makes a
         vector portable across datasets.
         """
         u = rng.uniform(lo, hi, n)
@@ -88,7 +88,7 @@ class AttackVector(ABC):
     # How often this vector transacts with a payee the account has not paid before.
     # A PROBABILITY, not a constant, and that distinction is the whole point. Four of
     # the vectors used to hard-code the flag to 1 on 100% of rows, which is not
-    # what fraud looks like — a bust-out reuses a drop account, a card tester hits a
+    # what fraud looks like, a bust-out reuses a drop account, a card tester hits a
     # merchant twice, an operator sends to the same mule again. It was also a
     # self-inflicted tell: the ablation in scripts/coordination_check.py measures the
     # detector gaining 25.0 +/- 3.2 points of recall from that one column at a 0.1% budget
@@ -96,7 +96,7 @@ class AttackVector(ABC):
     # that file that beats its own noise). Hard-coding the flag to 1 rather than removing
     # the column costs a further 8.8 +/- 4.9, which does NOT clear its noise and is not
     # quoted as though it did. The column sits on 41.2% of LEGITIMATE
-    # transactions and only 35.7% of frauds — slightly LESS common in real fraud than
+    # transactions and only 35.7% of frauds, slightly LESS common in real fraud than
     # in ordinary spending. A vector that sets it every time has painted a target on
     # itself, and the recall it loses to that target was never really earned.
     # Declared per class rather than in a lookup keyed by vector_id, so a subclass
@@ -121,7 +121,7 @@ class AttackVector(ABC):
         if getattr(self, "hosts", None) is None:
             raise RuntimeError(
                 f"{type(self).__name__} has no host pool. Call "
-                f"vector.calibrate(profile, HostPool(frame)) — a campaign is mounted on a "
+                f"vector.calibrate(profile, HostPool(frame)), a campaign is mounted on a "
                 f"real account so that issuer-side features are inherited, not invented."
             )
         return self.hosts
@@ -132,7 +132,7 @@ class AttackVector(ABC):
             raise RuntimeError(
                 f"{type(self).__name__} was not calibrated. Call "
                 f"vector.calibrate(BaseProfile(base.legit_quantiles, base.legit_categoricals)) "
-                f"before rendering — a vector has no absolute scale of its own."
+                f"before rendering, a vector has no absolute scale of its own."
             )
         return self.profile
 
@@ -148,13 +148,13 @@ class AttackVector(ABC):
         """The few columns the attacker actually chooses, per row.
 
         Not the timeline (amount, hour, day_of_week, both velocities, the gap, the amount
-        ratio) — the campaign produces those. Not the issuer's view either (account age,
-        merchant risk, linkage counts) — the host account supplies those. What is left is
+        ratio), the campaign produces those. Not the issuer's view either (account age,
+        merchant risk, linkage counts). The host account supplies those. What is left is
         what a fraudster genuinely decides: the payee, the rail, the destination.
         """
 
     def build_frame(self, camp, rng: np.random.Generator) -> pd.DataFrame:
-        """Feature rows for EVERY row of a campaign — the host's real history included.
+        """Feature rows for EVERY row of a campaign. The host's real history included.
 
         Kept separate from `render` because the evasion optimizer re-runs exactly this
         step after moving the timeline. The history rows are what velocity and

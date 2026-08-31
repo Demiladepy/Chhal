@@ -9,8 +9,8 @@ differ in exactly one thing.
 transaction. One operator drives many accounts; each account does something modest and
 unremarkable; the attack is the fact that they all did it inside the same window.
 
-The frozen feature space has no counterparty — no beneficiary id, no destination account,
-no edge between two rows — so there is a strong prior that the detector cannot see this at
+The frozen feature space has no counterparty. No beneficiary id, no destination account,
+no edge between two rows, so there is a strong prior that the detector cannot see this at
 all. A prior is not a result, and "our features cannot represent X" is exactly the kind of
 claim a submission should be made to prove rather than assert. So this script ablates it.
 
@@ -22,11 +22,11 @@ Three variants, one detector, one operating point:
     mule_fanout                      as shipped
     mule_fanout_uncoordinated        coordination OFF, everything else byte-identical
     mule_fanout_known_payee          is_new_beneficiary forced to 0, otherwise identical
-    mule_fanout_always_new_payee     is_new_beneficiary forced to 1 — the old behaviour
+    mule_fanout_always_new_payee     is_new_beneficiary forced to 1. The old behaviour
 
 The first pair asks whether per-victim mimicry is doing anything, or whether the mimicry
 vector would be just as hard to catch drawing from the population. The second pair asks
-whether the detector can see coordination — and the third exists to answer the obvious
+whether the detector can see coordination, and the third exists to answer the obvious
 follow-up: if not coordination, then what IS it catching?
 
 Single-pass detector throughout: one round of attacks, one retrain. Recall is lower than
@@ -36,7 +36,7 @@ something.
 Two things this script learned the hard way, and now guards against:
 
 * One seed is not a result. The coordination delta came out at -0.8, -3.2 and -8.3 points
-  on three consecutive runs of an earlier version. Same code, same data, different rng —
+  on three consecutive runs of an earlier version. Same code, same data, different rng,
   which means any one of those numbers, quoted alone, would have been a story invented
   from noise. Every variant is therefore run across SEEDS, and what gets reported is the
   mean with its spread.
@@ -99,8 +99,8 @@ def _variants():
 
         Kept as a variant rather than deleted, because the difference between this and
         the shipped 0.75 is the only honest measure of what that fix was worth. The
-        feature carries real signal for this vector either way — a mule fan-out does
-        send money somewhere new — so the question is not whether the detector may use
+        feature carries real signal for this vector either way, a mule fan-out does
+        send money somewhere new, so the question is not whether the detector may use
         it, but how much of its recall came from a determinism no real campaign has.
         """
 

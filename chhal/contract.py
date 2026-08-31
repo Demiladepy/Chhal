@@ -1,11 +1,11 @@
-"""The loop interface contract — the single frozen artifact both sides build against.
+"""The loop interface contract. The single frozen artifact both sides build against.
 
 Everything else in Chhal can change. These two structs and FEATURE_COLUMNS may
 not, without a deliberate, agreed schema bump. This is what lets the red side and the
 blue side develop in parallel without integration hell.
 
 The one rule that keeps the loop honest:
-    An AttackBatch may ONLY contain rows in FEATURE_COLUMNS — the same feature space
+    An AttackBatch may ONLY contain rows in FEATURE_COLUMNS. The same feature space
     the detector sees for legitimate traffic. No attack may invent a column the
     detector cannot observe, otherwise "detection" is trivial and the result is fake.
 """
@@ -34,16 +34,16 @@ FEATURE_COLUMNS: List[str] = [
     "merchant_risk",          # 0..1 issuer-side merchant risk score
 ] + [f"linkage_c{i}" for i in range(1, 15)]
 
-# IEEE-CIS's C1-C14: anonymised entity-linkage counts — how many addresses, devices,
+# IEEE-CIS's C1-C14: anonymised entity-linkage counts. How many addresses, devices,
 # emails and cards are associated with this card, over undisclosed windows. We do not
 # name them beyond what we can defend, because nobody outside Vesta knows exactly what
 # each one counts.
 #
 # They matter enormously and cannot be faked. On real fraud they take recall at a 0.1%
-# false-positive budget from 3.1% to 19.7% — a 6.4x lift that nothing else comes close
+# false-positive budget from 3.1% to 19.7%, a 6.4x lift that nothing else comes close
 # to, including all 339 V-features (which add under 2 points on top). We also tried to
-# rebuild the same signal from what we DO understand — distinct counterparties, addresses
-# and emails per account over time — and got +0.16 points, essentially nothing. Whatever
+# rebuild the same signal from what we DO understand, distinct counterparties, addresses
+# and emails per account over time, and got +0.16 points, essentially nothing. Whatever
 # they aggregate over (devices, phones, IPs, cross-card linkage) is not in the columns
 # this dataset exposes. See scripts/feature_ablation.py.
 #
@@ -63,7 +63,7 @@ INHERITED_FEATURES: List[str] = [
 LABEL_COLUMN = "is_fraud"
 
 # Features an attacker actually controls (used by the evasion optimizer). Issuer-side
-# signals such as merchant_risk are deliberately excluded — a fraudster cannot set them.
+# signals such as merchant_risk are deliberately excluded, a fraudster cannot set them.
 ATTACKER_CONTROLLED: List[str] = [
     "amount",
     "hour",
@@ -81,7 +81,7 @@ ATTACKER_CONTROLLED: List[str] = [
 # timeline LOOKS like once it has happened. You cannot choose to have transacted four
 # times in the last hour; you can only transact four times, and then that is what the
 # counter says. The evasion optimizer therefore searches over these four plus the
-# timeline itself, and re-derives the rest — see optimizer.py.
+# timeline itself, and re-derives the rest, see optimizer.py.
 ATTACKER_DIRECT: List[str] = [
     "amount",
     "is_new_beneficiary",
@@ -109,7 +109,7 @@ DERIVED_FEATURES: List[str] = [
     "amount_to_avg_ratio",
 ]
 
-# Columns of AttackBatch.timeline — the campaign a batch was rendered from, carried
+# Columns of AttackBatch.timeline. The campaign a batch was rendered from, carried
 # alongside the feature rows so the optimizer can re-derive instead of perturbing.
 TIMELINE_COLUMNS: List[str] = ["entity", "timestamp_s", "amount", "is_attack"]
 
@@ -164,7 +164,7 @@ class AttackBatch:
             if n_attack != len(self.transactions):
                 raise ValueError(
                     f"AttackBatch[{self.vector_id}] timeline has {n_attack} attack rows "
-                    f"but {len(self.transactions)} feature rows — they must correspond "
+                    f"but {len(self.transactions)} feature rows. They must correspond "
                     f"one-to-one and in order."
                 )
         return self
@@ -190,7 +190,7 @@ class ScoreReport:
     Operating-point metrics (`recall_at_fpr`, `pr_auc`, `alert_rate`) are the ones to
     quote. Recall at a fixed false-positive rate is the question an issuer actually
     asks, and `pr_auc` (average precision) is the honest summary under this much class
-    imbalance — ROC `auc` looks spectacular at 3.5% prevalence no matter what, because
+    imbalance, ROC `auc` looks spectacular at 3.5% prevalence no matter what, because
     the true-negative pile it divides by is enormous.
 
     Threshold metrics (`precision`, `recall`, `f1`, `fp_rate_on_legit`) are kept for
@@ -203,9 +203,9 @@ class ScoreReport:
     precision: float
     recall: float
     f1: float
-    auc: float                           # ROC AUC — flattering under imbalance, see above
+    auc: float                           # ROC AUC, flattering under imbalance, see above
     fp_rate_on_legit: float
-    pr_auc: float = 0.0                  # average precision — the honest summary
+    pr_auc: float = 0.0                  # average precision. The honest summary
     recall_at_fpr: Dict[float, float] = field(default_factory=dict)
     threshold_at_fpr: Dict[float, float] = field(default_factory=dict)
     # The false-positive rate each threshold ACTUALLY realises. At most the budget it

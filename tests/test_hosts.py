@@ -1,4 +1,4 @@
-"""Tests for mounting campaigns on real accounts — and for the leakage rules that allows.
+"""Tests for mounting campaigns on real accounts, and for the leakage rules that allows.
 
 The feature space contains the dataset's anonymised entity-linkage counts, which carry
 most of the real-fraud signal and cannot be reconstructed from anything we understand.
@@ -107,7 +107,7 @@ def test_the_attacker_cannot_move_inherited_features(base, pool):
     One inherited column is deliberately exempt. `account_age_days` is not frozen at the
     value the host had; it advances with the clock, so an attacker who waits three weeks
     longer before using the card faces a card that is genuinely three weeks older. They
-    still cannot SET it — they set the timing, and the age follows, exactly as velocity
+    still cannot SET it. They set the timing, and the age follows, exactly as velocity
     follows. Every other issuer-side signal must come out byte-identical.
     """
     from chhal.contract import ATTACKER_CONTROLLED, ATTACKER_DIRECT
@@ -160,7 +160,7 @@ def test_feature_space_partitions_cleanly():
 
 
 # ---------------------------------------------------------------------------
-# per-victim mimicry and coordination — the two things a vector can declare
+# per-victim mimicry and coordination. The two things a vector can declare
 # beyond its own bands
 # ---------------------------------------------------------------------------
 def _starts_per_campaign(camp):
@@ -223,7 +223,7 @@ def test_a_coordinated_vector_fires_its_campaigns_inside_one_window(base, pool):
 
 
 def test_an_uncoordinated_vector_does_not_accidentally_synchronise(base, pool):
-    """The control for the test above — without the flag, takeovers are independent."""
+    """The control for the test above, without the flag, takeovers are independent."""
     prof = BaseProfile(base.legit_quantiles, base.legit_categoricals)
     V = [V for V in ALL_VECTORS if V.temporal.coordinated_window_s is None][0]
     _, camp = V().calibrate(prof, pool).render_with_timeline(300, np.random.default_rng(3))
@@ -259,7 +259,7 @@ def _replay_pool(base):
     enough.
 
     The small synthetic fixture has no account that long, so the legitimate rows are
-    re-blocked into accounts of {n} — real column values, real timestamps, longer
+    re-blocked into accounts of {n}. Real column values, real timestamps, longer
     histories. Nothing here is a claim about the data; it is a bench with enough runway
     for the mechanism to be observable at all.
     """.format(n=LONG_HISTORY)
@@ -283,14 +283,14 @@ def test_replay_copies_a_contiguous_block_of_the_victims_own_history(base):
 
     `mimic_host` matches the victim's marginals and destroys everything else: six
     independent draws from a card's own quantile band can easily be its 90th-percentile
-    spend six times running — each value unremarkable, the sequence something that card
+    spend six times running, each value unremarkable, the sequence something that card
     has never once done. Replay is supposed to copy an ACTUAL slice, so the evidence for
     it is that one offset j into the victim's real history explains the whole campaign:
     the gaps are that slice's gaps up to per-gap jitter, and the amounts are that slice's
     amounts times ONE scale factor.
 
     Fails if replay silently degrades to mimicry, to the population bands, or to
-    independent draws from the victim's own values — none of which admit a single j.
+    independent draws from the victim's own values. None of which admit a single j.
     """
     from chhal.redteam.campaign import REPLAY_JITTER, REPLAY_SCALE
     from chhal.redteam.vectors import TrajectoryReplay
@@ -329,7 +329,7 @@ def test_replay_copies_a_contiguous_block_of_the_victims_own_history(base):
 
 def test_replay_leaves_the_victims_last_real_transaction_alone():
     """A block is cut from the card's settled past, not from whatever it did immediately
-    before the takeover — copying that would make the campaign a literal continuation of
+    before the takeover, copying that would make the campaign a literal continuation of
     the moment it interrupted.
 
     The history here is built so the offset is recoverable: amounts are 1..20, so a slice
@@ -382,7 +382,7 @@ def test_replay_preserves_a_cadence_that_mimicry_flattens(base):
     spread of the gaps within one campaign, relative to the spread within the victim's
     own real history, is where that shows.
 
-    This is the test that distinguishes the two vectors at all — they match on amount and
+    This is the test that distinguishes the two vectors at all. They match on amount and
     gap marginals by construction, so a marginal comparison cannot tell them apart.
     """
     from chhal.redteam.vectors import ThresholdHugging, TrajectoryReplay
@@ -437,7 +437,7 @@ def test_replay_preserves_a_cadence_that_mimicry_flattens(base):
 def test_phase_alignment_lands_on_the_blocks_own_hour_and_weekday(base):
     """A replayed block carries a weekly rhythm in its gaps. Started on the wrong weekday
     the whole sequence lands on the wrong days, and `day_of_week` is a column the
-    detector reads — so the start is aligned on both, and never lands before the takeover
+    detector reads, so the start is aligned on both, and never lands before the takeover
     is allowed to happen."""
     from chhal.behaviour import day_of_week_of, hour_of
     from chhal.redteam.campaign import _phase_align
@@ -473,7 +473,7 @@ def test_replay_still_starts_after_the_last_real_transaction(base):
 
 def test_replay_waits_about_as_long_as_mimicry_does(base):
     """The probe compares the two vectors on the columns the RED TEAM controls, and
-    `time_since_last_txn_min` is one of them — so the takeover wait has to be a property
+    `time_since_last_txn_min` is one of them, so the takeover wait has to be a property
     of the pair, not a difference between them.
 
     `_phase_align` can push a start most of a week past the moment it was handed, which
@@ -511,7 +511,7 @@ def test_replay_waits_about_as_long_as_mimicry_does(base):
     # atoms and says nothing. What has to match is the level, because that is what a
     # systematic offset in `time_since_last_txn_min` would look like.
     assert abs(replay.mean() - mimic.mean()) < 2.0, (
-        f"replay waits a mean {replay.mean():.1f} days and mimicry {mimic.mean():.1f} — "
+        f"replay waits a mean {replay.mean():.1f} days and mimicry {mimic.mean():.1f}: "
         "that is a controlled-column difference between two vectors that are supposed to "
         "differ only in where the timeline comes from"
     )
@@ -520,7 +520,7 @@ def test_replay_waits_about_as_long_as_mimicry_does(base):
 def test_the_probe_cannot_reach_the_shipped_suite():
     """`replay_host` was wired into `generate()` after every headline number was already
     measured, and the one thing that could not be allowed to happen is that wiring moving
-    those numbers. It does not, because the shipped vectors never take the replay branch —
+    those numbers. It does not, because the shipped vectors never take the replay branch,
     but that is a property of their profiles, not of the code, so it is asserted here
     rather than left to whoever edits `vectors.py` next.
 
@@ -543,7 +543,7 @@ def test_the_probe_cannot_reach_the_shipped_suite():
 def test_the_pool_reports_how_often_mimicry_actually_engages(base):
     """`mimic_host` is the flagship vector's entire claim, and on short histories it does
     not happen: `_host_gaps` returns None below MIN_HISTORY_TO_MIMIC and the campaign
-    quietly uses the population bands — the very thing the vector argues against.
+    quietly uses the population bands. The very thing the vector argues against.
 
     The fallback was always documented; the RATE was not, which is what made it a problem.
     A disguise that engages on fewer than one campaign in three is a different claim from

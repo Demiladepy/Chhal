@@ -67,7 +67,7 @@ def main() -> None:
         },
         # The control, and the number to read the operating points against. If the
         # attack recall climbs while this stays flat, the loop taught the detector our
-        # generator rather than fraud — which is a finding, not a bug, and it has to be
+        # generator rather than fraud, which is a finding, not a bug, and it has to be
         # visible in the same file as the headline.
         "real_fraud_recall_at_fpr_0.001": {
             "baseline": round(float(bench["real_fraud_recall_at_fpr"].iloc[0]), 4),

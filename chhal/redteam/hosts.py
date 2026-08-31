@@ -3,8 +3,8 @@
 A red team does not invent its victims. Before this, an attack was a free-standing
 entity with a generated history and generated issuer-side context, which left one thing
 impossible to do honestly: the dataset's entity-linkage counts (C1-C14). Those carry the
-overwhelming majority of the real-fraud signal — 3.1% to 19.7% recall at a 0.1%
-false-positive budget — and cannot be reconstructed from anything we understand, so a
+overwhelming majority of the real-fraud signal, 3.1% to 19.7% recall at a 0.1%
+false-positive budget, and cannot be reconstructed from anything we understand, so a
 generated attacker could only fabricate them.
 
 So the attack now compromises a REAL card. Its linkage history, its age, its issuer-side
@@ -17,7 +17,7 @@ Leakage discipline, all enforced here
 * Only accounts whose every observed transaction is LEGITIMATE may host a campaign. A
   fraudulent account's rows carry label information we would then be smuggling into an
   attack row.
-* Hosts come from the split the attacks will be used in — train-time attacks mount on
+* Hosts come from the split the attacks will be used in, train-time attacks mount on
   train accounts, evaluation attacks on test accounts. Evaluation pools additionally
   EXCLUDE any account seen in training (`exclude_accounts`), which on `source="ieee"` is
   now a NO-OP and is kept as defence rather than as a load-bearing control: measured on the
@@ -37,7 +37,7 @@ Leakage discipline, all enforced here
 The honest limitation
 ---------------------
 Linkage counts are FROZEN at the host's last observed values. In reality a takeover
-would nudge some of them — a new shipping address raises whatever counts addresses. We
+would nudge some of them, a new shipping address raises whatever counts addresses. We
 cannot model that, because we do not know what each column counts. Freezing is the
 conservative choice: it means the detector cannot use linkage to catch our attacks, only
 to catch real fraud. That is the correct outcome for a feature the attacker does not
@@ -64,7 +64,7 @@ class Host:
     history_ts: np.ndarray        # real transaction times, ascending
     history_amount: np.ndarray    # real transaction amounts
     inherited: np.ndarray         # values of INHERITED_FEATURES at its last transaction
-    # Which real account this is. Never a feature — it exists so the loop can PROVE
+    # Which real account this is. Never a feature. It exists so the loop can PROVE
     # that evaluation attacks were mounted on accounts the detector never trained on,
     # rather than asserting it in a docstring. See loop.leakage_audit.
     account: object = None
@@ -164,7 +164,7 @@ class HostPool:
         documented, but its rate was not, and the rate is the whole story: IEEE-CIS
         accounts are short, so on the benchmark pool the mimicry vectors mimic under a
         third of the time. Published here rather than left implicit, for the same reason
-        the replay probe publishes its own feasibility rate — a disguise that engages on
+        the replay probe publishes its own feasibility rate, a disguise that engages on
         29% of campaigns is a different claim from one that engages always.
         """
         from .campaign import MIN_HISTORY_TO_MIMIC

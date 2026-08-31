@@ -1,4 +1,4 @@
-"""Tests for the mitigation layer — the part that turns a score into a decision."""
+"""Tests for the mitigation layer. The part that turns a score into a decision."""
 from __future__ import annotations
 
 import sys
@@ -45,12 +45,12 @@ def test_certain_fraud_is_never_allowed_and_certain_legit_is_never_blocked():
 
 
 def test_the_decision_is_amount_aware():
-    """The same fraud probability must resolve differently on a small and a large amount —
-    this is the thing a single global threshold structurally cannot do.
+    """The same fraud probability must resolve differently on a small and a large amount.
+    This is the thing a single global threshold structurally cannot do.
 
     At p=0.30 the defaults price a $5 transaction into a cheap OTP challenge (expected
     cost 4.16, against 9.00 to allow it) and a $5,000 one into analyst review (116.60,
-    against 188.98 to challenge and 1507.50 to allow). Both caps are lifted here — this
+    against 188.98 to challenge and 1507.50 to allow). Both caps are lifted here. This
     test is about the ordering the cost model produces, not about capacity."""
     pol = ActionPolicy(CostModel(),
                        PolicyConfig(max_review_rate=1.0, max_stepup_rate=1.0))
@@ -106,7 +106,7 @@ def test_expected_cost_policy_beats_a_fixed_threshold_and_doing_nothing():
 
 def test_miscalibrated_scores_degrade_the_policy():
     """Why Calibrator is not optional. Feed the same population's scores through a
-    monotone squash — ranking untouched, so every recall/AUC number is identical — and
+    monotone squash, ranking untouched, so every recall/AUC number is identical, and
     the expected-cost policy gets measurably worse, because it is multiplying a number
     that is no longer a probability by a dollar amount."""
     p, y, amt = _calibrated_population()
@@ -124,7 +124,7 @@ def test_the_tuned_ladder_is_the_best_threshold_pair_that_exists():
     """The comparator has to be the strongest amount-blind policy, not a convenient one.
 
     tune_two_thresholds claims a GLOBAL optimum via prefix sums rather than a grid search.
-    If that claim is wrong, some random pair of thresholds will beat it — so try many.
+    If that claim is wrong, some random pair of thresholds will beat it, so try many.
     """
     p, y, amt = _calibrated_population()
     c = CostModel()
@@ -193,7 +193,7 @@ def test_the_real_edge_is_measured_against_the_tuned_ladder_not_the_naive_thresh
     assert smart < tuned, "amount-awareness has to earn its place against a tuned ladder"
     assert without_queue < tuned, (
         "with the queue closed the policy differs from the ladder ONLY by being "
-        "amount-aware — if it cannot win here, amount-awareness is not what is winning")
+        "amount-aware, if it cannot win here, amount-awareness is not what is winning")
     # The review queue is the least deployable piece of the policy (it is capped at
     # 0.5% of traffic because analysts are a real, finite resource). If most of the
     # saving turned out to come from it, the honest headline would be about staffing
@@ -204,7 +204,7 @@ def test_the_real_edge_is_measured_against_the_tuned_ladder_not_the_naive_thresh
 
 def test_fraud_loss_avoided_is_a_different_number_from_cost_reduction():
     """Two true numbers, one label, was the bug. Blocking everything avoids essentially
-    all fraud loss while costing far more than doing nothing — so if the two measures
+    all fraud loss while costing far more than doing nothing, so if the two measures
     ever agree, one of them is not measuring what it says."""
     p, y, amt = _calibrated_population()
     c = CostModel()

@@ -6,7 +6,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 
 # The supported window is narrow and it is not arbitrary. `numpy==1.26.4` ships no
-# wheel for 3.13 or 3.14, and `pyarrow==25.0.1` ships none for 3.9 — which is what a
+# wheel for 3.13 or 3.14, and `pyarrow==25.0.1` ships none for 3.9, which is what a
 # bare `python3` still is on macOS. Undeclared, that combination fails at install with
 # a compiler error that looks like the project's fault. So it is declared.
 requires-python = ">=3.10,<3.13"

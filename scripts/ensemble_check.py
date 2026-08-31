@@ -8,9 +8,9 @@ come back negative.
 Two questions, both at a FIXED 0.1% false-positive budget on real legitimate traffic so
 the comparison is like for like:
 
-  1. UNSEEN FAMILY — train on every vector but one, score the one held out, which neither arm
+  1. UNSEEN FAMILY, train on every vector but one, score the one held out, which neither arm
      has seen in any form. Does supervised + anomaly beat supervised alone?
-  2. REAL FRAUD — IEEE-CIS's own labelled fraud, where the supervised arm scores only
+  2. REAL FRAUD, IEEE-CIS's own labelled fraud, where the supervised arm scores only
      ~3% at this budget through twelve derived features. Does the anomaly arm help there?
 
 Also reports how often the anomaly arm is the one carrying a catch, which is the number
@@ -50,7 +50,7 @@ def recall_at(scores_legit, scores_pos, fpr=FPR):
 
     This used to be `np.quantile(scores_legit, 1 - fpr)`. A gradient-boosted ensemble
     emits large blocks of identical scores, the quantile routinely lands inside one, and
-    a `>=` rule then sweeps the whole block in — so the realised FPR can be many times
+    a `>=` rule then sweeps the whole block in, so the realised FPR can be many times
     the budget the number is reported at. `threshold_for_fpr` walks the distinct scores
     and takes the lowest one whose realised rate actually fits. Every other script in
     the repo already goes through it; this one was the last holdout, and its numbers
@@ -144,7 +144,7 @@ def main() -> None:
         f"max fusion {d_max:+.4f} and stacking {d_stk:+.4f} against the supervised "
         f"detector on an unseen family. The anomaly arm carries {np.mean(carried):.1%} of "
         f"catches and scores {alone_u:.4f} alone, because attacks are on-manifold by "
-        f"construction — the better the fidelity guarantee, the less an outlier detector "
+        f"construction. The better the fidelity guarantee, the less an outlier detector "
         f"can contribute. Ship: {best}."
         + ("" if best != "supervised" else
            " Neither fusion earns its 32MB; the single supervised model wins.")

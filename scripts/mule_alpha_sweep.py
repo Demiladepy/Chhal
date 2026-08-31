@@ -14,7 +14,7 @@ failure mode is not hypothetical.
 
 PROVENANCE, STATED PLAINLY. The jitter/chaff/permutation recipe and the alpha in [0, 0.5]
 parameterisation come from arXiv 2607.27370, which is **Ethereum Sybil-cluster discovery
-via Gzip normalised compression distance** — NOT a money-mule paper and not a
+via Gzip normalised compression distance**, NOT a money-mule paper and not a
 defender-validated mule evasion recipe. Using it here is a cross-domain translation and is
 labelled as one wherever the number appears.
 
@@ -166,7 +166,7 @@ def main() -> None:
         print(f"    alpha 0 -> 0.5 : {lo:.2%} -> {hi:.2%}  ({(hi - lo) * 100:+.1f} pts)")
 
     print("\n  permutation: no analogue. The frozen feature space has no counterparty "
-          "column,\n  so there is no transaction graph to permute — which is the absence "
+          "column,\n  so there is no transaction graph to permute, which is the absence "
           "mule_fanout\n  was built to measure.")
     print(f"\n-> {RESULTS / 'mule_alpha_sweep.csv'}   ({time.time() - t0:.0f}s)")
 

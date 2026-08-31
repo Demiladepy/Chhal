@@ -1,4 +1,4 @@
-"""The closed loop — orchestration that produces the arms-race curve.
+"""The closed loop, orchestration that produces the arms-race curve.
 
 We measure the two things that tell the true story, and keep them separate:
 
@@ -10,17 +10,17 @@ learned our generator and nothing about fraud; read against a flat real-fraud li
 that is exactly what it says.
 
 All recalls on the curve are measured at a FIXED false-positive budget (0.1% of real
-legitimate traffic), not at a 0.5 threshold — see evaluation.py for why.
+legitimate traffic), not at a 0.5 threshold, see evaluation.py for why.
 
   * BENCHMARK (blue generalisation, the money chart): a FIXED set of hard adaptive
     attacks, built once against the baseline detector and NEVER trained on. As the loop
     feeds the detector diverse adaptive attacks, its recall on this fixed held-out
-    benchmark should RISE — evidence the defence learns the *shape* of adaptive fraud,
+    benchmark should RISE, evidence the defence learns the *shape* of adaptive fraud,
     not specific attacks.
 
   * PRESSURE (red's ongoing probing): each iteration the red team optimises a FRESH
     batch against the current detector and holds it out. Scored by the retrained
-    detector, this line stays volatile/low — the red team keeps finding new evasions.
+    detector, this line stays volatile/low. The red team keeps finding new evasions.
 
 Per iteration t:
   1. Red team renders seed attacks, the evasion optimizer adapts them against
@@ -103,7 +103,7 @@ def _leakage_audit(train_pool, bench_attacks, bench_batches, pressure, base) -> 
     The docstring at the top of this file makes three promises. Mutation testing showed
     all three were unguarded: deleting the benchmark/train separation, collapsing the
     held-out slice onto the train slice, and dropping the train/test account exclusion
-    each left the whole suite green — the first two make recall RISE, so the tests
+    each left the whole suite green. The first two make recall RISE, so the tests
     passed harder for the leak. These counts are what a reader can check instead.
     """
     pool_keys = _row_keys(train_pool)
@@ -128,13 +128,13 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     detector = Detector(seed=cfg.seed).fit(base.train, LABEL_COLUMN)
     optimizer = EvasionOptimizer(base.feature_stats)
     # Bind every vector to THIS population before it renders anything. A vector has
-    # no absolute scale of its own — it describes where in legitimate traffic it sits,
+    # no absolute scale of its own. It describes where in legitimate traffic it sits,
     # so it must be told what legitimate traffic looks like here.
     profile = BaseProfile(base.legit_quantiles, base.legit_categoricals)
 
     # Two host pools, and which one a campaign is mounted on is a leakage decision.
     # The FIXED BENCHMARK is the headline number, scored against test-side legitimate
-    # traffic, so its campaigns compromise TEST accounts — otherwise an evaluation attack
+    # traffic, so its campaigns compromise TEST accounts, otherwise an evaluation attack
     # would carry issuer-side context the detector trained on. The per-iteration attacks
     # mostly exist to be retrained on, so they compromise TRAIN accounts.
     train_hosts = HostPool(base.train)
@@ -146,8 +146,8 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     legit_eval = base.test[base.test[LABEL_COLUMN] == 0]
 
     # -- build the FIXED adversarial benchmark once, against the baseline detector ----
-    # These are hard (they evade the baseline). They are held out forever — the detector
-    # never trains on them — so improving on them proves generalisation, not memory.
+    # These are hard (they evade the baseline). They are held out forever. The detector
+    # never trains on them, so improving on them proves generalisation, not memory.
     bench_batches = [
         optimizer.optimize(v.batch(cfg.benchmark_per_vector, 0, rng), detector, rng)
         for v in bench_vectors
@@ -162,7 +162,7 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
     curve_rows: List[Dict] = []
     per_vec_rows: List[Dict] = []
 
-    # iteration 0 — baseline detector vs the benchmark (expected: low, they evade it)
+    # iteration 0, baseline detector vs the benchmark (expected: low, they evade it)
     b0 = bench_report(detector, 0)
     curve_rows.append({**b0.as_row(), "phase": "benchmark"})
     baseline_report = b0
@@ -191,14 +191,14 @@ def run_loop(cfg: LoopConfig | None = None, base: BaseData | None = None) -> Loo
         train_pool = pd.concat([train_pool, tr_labeled], ignore_index=True)
         detector = Detector(seed=cfg.seed).fit(train_pool, LABEL_COLUMN)
 
-        # 4a. BENCHMARK — blue generalisation on the fixed held-out set (should rise)
+        # 4a. BENCHMARK, blue generalisation on the fixed held-out set (should rise)
         bench = bench_report(detector, t)
         curve_rows.append({**bench.as_row(), "phase": "benchmark"})
         for vid, rec in bench.per_vector_recall_at_fpr.items():
             per_vec_rows.append({"iteration": t, "vector": vid, "recall": rec,
                                  "recall_at_threshold_0.5": bench.per_vector_recall.get(vid, 0.0)})
 
-        # 4b. PRESSURE — retrained detector on this iteration's fresh evasions
+        # 4b. PRESSURE, retrained detector on this iteration's fresh evasions
         pressure = evaluate(detector, legit_eval, ho, ho_vec, t, "heldout_novel",
                             real_traffic=base.test)
         curve_rows.append({**pressure.as_row(), "phase": "pressure"})

@@ -1,11 +1,11 @@
-"""Latency and throughput — the "real-world feasibility" number, measured.
+"""Latency and throughput. The "real-world feasibility" number, measured.
 
 Everything else here is measured in recall and money. Neither matters if the decision
 cannot be made inside an authorization. A card authorization is a synchronous
 round trip with a budget of roughly 100-300ms end to end, most of which belongs to the
 network and the issuer's own systems; the risk decision gets a slice of it, tens of
 milliseconds at best. So the question is not "is the model fast" but "does the whole
-path — anomaly score, detector, calibration, action decision — fit in that slice at
+path, anomaly score, detector, calibration, action decision, fit in that slice at
 n=1, one transaction at a time, which is how authorizations actually arrive."
 
 Batch numbers are reported too, because they are what a nightly rescoring or a queue

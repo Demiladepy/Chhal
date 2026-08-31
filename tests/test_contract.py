@@ -48,7 +48,7 @@ def test_attackbatch_rejects_wrong_feature_space():
 
 
 def test_vector_requires_calibration():
-    """A vector has no absolute scale of its own — rendering uncalibrated must fail loudly
+    """A vector has no absolute scale of its own, rendering uncalibrated must fail loudly
     rather than silently emitting values from some other dataset's range."""
     with pytest.raises(RuntimeError, match="not calibrated"):
         ALL_VECTORS[0]().batch(5, 0, np.random.default_rng(0))
@@ -62,7 +62,7 @@ def test_all_vectors_emit_frozen_feature_space():
         assert list(batch.transactions.columns) == FEATURE_COLUMNS
         assert len(batch) == 20
         for col in INTEGER_FEATURES:
-            # dtype, not `% 1 == 0` — a float column satisfies the latter, so dropping
+            # dtype, not `% 1 == 0`, a float column satisfies the latter, so dropping
             # the integer coercion entirely left this assertion green.
             assert pd.api.types.is_integer_dtype(batch.transactions[col]), (
                 f"{col} is {batch.transactions[col].dtype}, not an integer type")
@@ -75,7 +75,7 @@ def test_calibrated_vectors_stay_inside_the_real_value_range():
     Only the non-derived columns are checked. `velocity_*`, `time_since_last_txn_min`
     and `amount_to_avg_ratio` now come from the campaign timeline rather than the
     quantile grid (see chhal/behaviour.py), so they can legitimately land outside the
-    range a small sample happens to contain — a 7-day gap is ordinary in real traffic
+    range a small sample happens to contain, a 7-day gap is ordinary in real traffic
     but may simply be absent from 3,000 synthetic rows. Their correctness is a
     consistency property, tested in test_behaviour.py.
     """
@@ -114,7 +114,7 @@ def test_the_optimizer_cannot_emit_an_impossible_transaction():
 
     This is the test whose absence let the defect ship. The old optimizer perturbed
     velocity_1h, velocity_24h and time_since_last_txn_min as three independent scalars,
-    so 59-93% of the rows it emitted were physically impossible — including rows claiming
+    so 59-93% of the rows it emitted were physically impossible, including rows claiming
     more transactions in the last hour than in the last twenty-four. The seed batches
     were clean and the only consistency test ran on THOSE, before the optimizer touched
     anything, so the suite stayed green while the benchmark, the fidelity population and
@@ -133,7 +133,7 @@ def test_the_optimizer_cannot_emit_an_impossible_transaction():
             viol = consistency_violations(frame)
             assert viol["velocity_1h_exceeds_24h"] == 0.0, (
                 f"{vector.__name__} {name}: a 1-hour count cannot exceed the 24-hour "
-                f"window that contains it — {viol}")
+                f"window that contains it, {viol}")
             assert viol["violates_1h_rule"] == 0.0, f"{vector.__name__} {name}: {viol}"
             assert viol["violates_24h_rule"] == 0.0, f"{vector.__name__} {name}: {viol}"
 
@@ -149,7 +149,7 @@ def test_loop_runs_and_produces_a_curve():
 
     # Every operating point must have honoured the budget it is named after. The old
     # assertions here were `f1.between(0, 1)` and `fp_rate.between(0, 1)`, which are
-    # true of any number a probability can be — they passed with inverted predictions.
+    # true of any number a probability can be. They passed with inverted predictions.
     for fpr in OPERATING_POINTS:
         realised = result.curve[f"realised_fpr_{fpr}"]
         assert (realised <= fpr + 1e-12).all(), (
@@ -157,17 +157,17 @@ def test_loop_runs_and_produces_a_curve():
 
     # the closed loop must lift benchmark recall well above the static baseline:
     # generalisation to attacks the detector never trained on. Both a RISE and a FLOOR
-    # — the rise alone would pass while recall collapsed from 0.92 to 0.30.
+    #. The rise alone would pass while recall collapsed from 0.92 to 0.30.
     bench = result.curve[result.curve["phase"] == "benchmark"].sort_values("iteration")
     primary = f"recall_at_fpr_{PRIMARY_FPR}"
     assert bench["recall"].iloc[-1] > bench["recall"].iloc[0] + 0.3
     assert bench[primary].iloc[-1] > bench[primary].iloc[0] + 0.2
     assert bench[primary].iloc[-1] > 0.30, (
         f"the loop ends at {bench[primary].iloc[-1]:.3f} recall inside a "
-        f"{PRIMARY_FPR:.1%} budget — it rose, but from and to nowhere useful")
+        f"{PRIMARY_FPR:.1%} budget. It rose, but from and to nowhere useful")
 
     # fidelity is populated and the guardrail keeps what the attacker SETS on the
-    # manifold. The derived block is reported, not constrained — see fidelity.py.
+    # manifold. The derived block is reported, not constrained, see fidelity.py.
     assert result.fidelity["on_manifold_rate"] > 0.98
     # ...and because that number is ~1.0 BY CONSTRUCTION (the optimizer clips to exactly
     # these bounds), assert the non-tautological companion too: the guardrail has to
@@ -186,10 +186,10 @@ def test_loop_runs_and_produces_a_curve():
     assert set(result.fidelity_per_vector.columns) == {
         "vector", "mean_ks_vs_legit", "mean_ks_controlled",
         # the same two distances in multiples of the legit-vs-legit noise floor, which
-        # is the only form that is comparable across features — see fidelity.KS_NULL_FLOOR
+        # is the only form that is comparable across features, see fidelity.KS_NULL_FLOOR
         "mean_degradation_ratio", "mean_degradation_ratio_controlled",
         "features_like_legit", "controlled_like_legit", "n_controlled"}
-    # the restricted distance must be the LARGER one — if it is not, the inherited
+    # the restricted distance must be the LARGER one, if it is not, the inherited
     # columns are not matching by construction and something upstream is wrong
     fpv = result.fidelity_per_vector
     assert (fpv["mean_ks_controlled"] >= fpv["mean_ks_vs_legit"] - 1e-9).all(), fpv
@@ -222,7 +222,7 @@ def test_real_ieee_source_if_prepared():
     base = load_base_data(source="ieee")
     assert base.source == "ieee"
     assert list(base.legit_quantiles.columns) == FEATURE_COLUMNS
-    # manifold must come from train only — never from rows the detector will be tested on
+    # manifold must come from train only, never from rows the detector will be tested on
     assert base.feature_stats["amount"].loc[0.995] <= base.train["amount"].max()
 
     # train + test no longer sum to the corpus: a 7-day delay period and the straddling

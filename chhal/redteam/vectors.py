@@ -1,9 +1,9 @@
-"""The six live-loop attack vectors and one negative control — each a campaign shape,
+"""The six live-loop attack vectors and one negative control, each a campaign shape,
 not a row shape.
 
 A vector declares two things and nothing else:
 
-  `temporal`          how the attack unfolds once the account is compromised — how many
+  `temporal`          how the attack unfolds once the account is compromised. How many
                       transactions, how far apart, how the amount moves. What came before
                       is not declared here: it is the host account's real history. The base class
                       lays out the timeline and DERIVES amount, hour, day_of_week, both
@@ -12,7 +12,7 @@ A vector declares two things and nothing else:
                       transactions. Those seven columns are therefore internally
                       consistent by construction rather than by inspection.
 
-  `static_features`   the few things a fraudster actually chooses — the payee, the rail,
+  `static_features`   the few things a fraudster actually chooses. The payee, the rail,
                       the destination. Account age, merchant risk and the entity-linkage
                       counts are NOT here: they are inherited from the real account the
                       campaign is mounted on, because an attacker cannot set them.
@@ -27,7 +27,7 @@ The bands and the campaign shapes together are what separate the vectors:
 the per-vector KS table then measures.
 
 Text/agent "showcase" vectors (voice clone, prompt injection) live in the write-up, not
-here, because they do not emit tabular features — see the strategy doc.
+here, because they do not emit tabular features, see the strategy doc.
 """
 from __future__ import annotations
 
@@ -71,8 +71,8 @@ class ThresholdHugging(AttackVector):
     campaigns (40.5% train-side); the rest fall back to the population bands this vector
     exists to argue against. `HostPool.mimicry_engagement` measures it and
     `HostPool.describe` prints it every run. That is a limit of the data rather than of
-    the idea — an attacker holding a two-transaction statement has nothing to profile
-    either — but it caps what this vector can demonstrate here, and it is a large part of
+    the idea, an attacker holding a two-transaction statement has nothing to profile
+    either, but it caps what this vector can demonstrate here, and it is a large part of
     why its ablation lands inside the noise.
     """
 
@@ -80,8 +80,8 @@ class ThresholdHugging(AttackVector):
     vector_id = "threshold_hugging"
     storyline = (
         "The attacker profiles the victim's own spending and cadence from the card's "
-        "history, then transacts inside that profile — just under every velocity and "
-        "amount threshold the victim would themselves trip — so nothing about the "
+        "history, then transacts inside that profile, just under every velocity and "
+        "amount threshold the victim would themselves trip, so nothing about the "
         "sequence is anomalous FOR THIS ACCOUNT."
     )
     temporal = TemporalProfile(
@@ -123,7 +123,7 @@ class SyntheticBustout(AttackVector):
         return {
             "is_new_beneficiary": p.bernoulli(self.new_payee_rate, n, rng),
             # elevated vs the 0.7% legit / 2.2% fraud base rate, because cashing out
-            # abroad is this vector's point — but not so high it leaves the manifold.
+            # abroad is this vector's point, but not so high it leaves the manifold.
             "is_cross_border": p.bernoulli(0.10, n, rng),
             "channel_code": p.categorical("channel_code", n, rng),
         }
@@ -163,7 +163,7 @@ class UpiCollectScam(AttackVector):
     longer exists.
 
     Two facts make merchant collect the right target rather than a fallback. First, it
-    is what survived — collect requests from merchants still run, and they are the
+    is what survived, collect requests from merchants still run, and they are the
     higher-limit variant. Second, the P2P rail could never have carried this attack
     anyway: a circular of 31 October 2019 capped P2P collect at Rs 2,000 per
     transaction with 50 successful transactions a day, while this vector's
@@ -205,21 +205,21 @@ class UpiCollectScam(AttackVector):
 
 
 class MuleFanout(AttackVector):
-    """Many compromised accounts, one operator, one window — the vector GenAI actually
+    """Many compromised accounts, one operator, one window. The vector GenAI actually
     changes, because what it makes cheap is running a hundred of these at once.
 
     Every other vector here is a single-account story: this card, this victim, this
     burst. That is what fraud looked like when a person had to work each account by
     hand. The thing generative models change is not the cleverness of one attack, it is
     that one operator can run a mule network at a scale that used to need a call centre.
-    So this vector is deliberately unremarkable per account — two to five transfers,
-    sensible amounts, nothing that trips a per-account rule — and its signature lives
+    So this vector is deliberately unremarkable per account. Two to five transfers,
+    sensible amounts, nothing that trips a per-account rule, and its signature lives
     entirely in the fact that a hundred unrelated accounts did it inside the same window.
 
     What this vector is really for
     ------------------------------
     The frozen feature space has no counterparty. There is no beneficiary id, no
-    destination account, no edge between two rows — so the coordination that DEFINES this
+    destination account, no edge between two rows, so the coordination that DEFINES this
     attack is not observable by the detector at all. It can only see each account's own
     small burst, and whatever weak clustering survives in `hour` and `day_of_week`.
 
@@ -234,12 +234,12 @@ class MuleFanout(AttackVector):
     coordination is genuinely invisible here and "a graph layer is future work" stops
     being a line in a limitations section and becomes a number. If it lands well above,
     the clustering in `hour` and `day_of_week` is doing the work, and that is worth
-    knowing too — it would mean a crude time-bucket feature buys some of what a graph
+    knowing too. It would mean a crude time-bucket feature buys some of what a graph
     would.
 
     An earlier draft of this vector set cross-border at 0.35 against a 0.7% legitimate
     base rate. It scored 93.4%, and it was being caught on that one column rather than on
-    anything to do with the network — which would have made the experiment worthless while
+    anything to do with the network, which would have made the experiment worthless while
     looking like a good result.
     """
 
@@ -247,7 +247,7 @@ class MuleFanout(AttackVector):
     vector_id = "mule_fanout"
     storyline = (
         "One operator drives a network of mule accounts opened or bought at scale. Each "
-        "account moves a modest, unremarkable amount onward to fresh beneficiaries — but "
+        "account moves a modest, unremarkable amount onward to fresh beneficiaries, but "
         "all of them move within the same few hours, before anyone reconciles across "
         "accounts."
     )
@@ -273,15 +273,15 @@ class MuleFanout(AttackVector):
 
 
 class AutopayMandate(AttackVector):
-    """A fraudulent recurring mandate disguised as a subscription — the vector whose whole
+    """A fraudulent recurring mandate disguised as a subscription. The vector whose whole
     signature is REGULARITY, and a controlled probe of a blind spot the others cannot reach.
 
     Every other vector here moves fast or moves in a burst: `card_testing` probes in
     seconds, `bustout` empties in an afternoon, `upi_collect` drains in minutes. A detector
     tuned on real fraud learns that shape, and `velocity_1h`, `velocity_24h` and the
     inter-transaction gap carry a large part of it. This vector deliberately does the
-    opposite. A GenAI phishing flow — disguised as a KYC re-verification or a delivery
-    reschedule — tricks the victim into approving a recurring auto-debit *mandate* rather
+    opposite. A GenAI phishing flow, disguised as a KYC re-verification or a delivery
+    reschedule, tricks the victim into approving a recurring auto-debit *mandate* rather
     than a one-off payment: the live UPI-AutoPay successor to the P2P collect-request that
     NPCI closed in October 2025. The fraud then draws a modest, near-constant amount on a
     weekly cadence, from an established-looking payee. No single transaction is unusual and
@@ -291,12 +291,12 @@ class AutopayMandate(AttackVector):
     What it measures
     ----------------
     Its recall reads whether the detector has a SLOW-FRAUD blind spot. Every behavioural
-    feature that makes the burst vectors catchable — both velocities near zero, a month-long
-    gap — reads here as ordinary, because dormant-then-single-purchase is a completely normal
+    feature that makes the burst vectors catchable. Both velocities near zero, a month-long
+    gap, reads here as ordinary, because dormant-then-single-purchase is a completely normal
     thing for a real card to do. If this vector's recall lands low, steady recurring drain is
     a genuine gap and "the detector is tuned for spikes" stops being a line in a limitations
     section and becomes a number. If it lands high, the signal is coming from the linkage
-    block or the amount rather than from anything temporal — worth knowing too, because it
+    block or the amount rather than from anything temporal, worth knowing too, because it
     would mean the issuer-side context catches even fraud that leaves no temporal trace.
 
     Like `mule_fanout`, the static columns are held near legitimate base rates on purpose: a
@@ -364,7 +364,7 @@ class AutopayMandate(AttackVector):
 # Order is load-bearing: tests and scripts index this list positionally, so new vectors
 # are appended rather than inserted.
 class Dunning(AttackVector):
-    """NOT AN ATTACK. Legitimate subscription retries — the confusable class.
+    """NOT AN ATTACK. Legitimate subscription retries, the confusable class.
 
     Deliberately excluded from `ALL_VECTORS`: nothing here is fraud, nothing is optimized
     against the detector, and the loop never sees it. It exists so that `card_testing`'s
@@ -374,7 +374,7 @@ class Dunning(AttackVector):
     Smart Retries schedule up to eight attempts spread over roughly three weeks; other
     merchants batch every failed subscription onto the first of the month. The resulting
     transaction sequence is repeated attempts on one card, at the same amount, with a low
-    success rate, arriving in a cluster — and Stripe's own documentation warns that this
+    success rate, arriving in a cluster, and Stripe's own documentation warns that this
     "can look like card testing".
 
     That is the whole point. A detector that reaches 96% on card testing by flagging every
@@ -384,7 +384,7 @@ class Dunning(AttackVector):
 
     Two variants are measured (see `scripts/dunning_control.py`):
 
-    * as dunning actually is — `is_new_beneficiary = 0`, because a retry by definition
+    * as dunning actually is, `is_new_beneficiary = 0`, because a retry by definition
       goes to a merchant the card has already paid;
     * a harder variant that sets it at the card-testing rate, which happens in practice
       after a card update creates a fresh payment record. This bounds how much of the
@@ -423,7 +423,7 @@ class TrajectoryReplay(ThresholdHugging):
 
     Identical to `threshold_hugging` in every respect but one: `replay_host=True`. Same
     payee rate, same static features, same host pool, same campaign sizes. The single
-    difference is where the timeline comes from — mimicry resamples the victim's
+    difference is where the timeline comes from, mimicry resamples the victim's
     marginals independently, replay copies a contiguous slice of the victim's actual
     past. That makes the pair a controlled comparison rather than two vectors that happen
     to differ.
@@ -434,7 +434,7 @@ class TrajectoryReplay(ThresholdHugging):
     marginals cannot preserve its joint structure, and that the gap is measurable. This
     is the constructive answer: do not approximate the joint, copy it from the one
     account entitled to it. `mimic_host` can draw a card's 90th-percentile spend six
-    times running — every value individually unremarkable, the sequence something that
+    times running. Every value individually unremarkable, the sequence something that
     card has never once done. A replayed block cannot, because the sequence is the card's
     own.
 
@@ -448,11 +448,11 @@ class TrajectoryReplay(ThresholdHugging):
     else, and that a headline number moving would mean the §2.7 result is wrong rather
     than that this vector is good.
 
-    What it can still show is whether the sequence is genuinely more realistic — measured
+    What it can still show is whether the sequence is genuinely more realistic. Measured
     on statistics the marginals do not constrain, and scored against the ceiling a real
     uncopied block of the same length reaches rather than against the victim's whole
     history, which a three-to-nine transaction slice cannot reach even when it is
-    genuine — and whether that realism buys anything once the inherited block is
+    genuine, and whether that realism buys anything once the inherited block is
     transplanted away and the controlled block is the only thing left to see.
     `scripts/audit/trajectory_replay_probe.py` runs both.
     """

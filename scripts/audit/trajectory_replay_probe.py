@@ -7,12 +7,12 @@ INDEPENDENTLY. That matches the marginals and destroys everything else. A card's
 is not i.i.d.: a large purchase is followed by a quiet week, an evening burst repeats
 weekly, a subscription lands on the same day each month. Draw six amounts independently
 from a card's own quantile band and you can produce its 90th-percentile spend six times
-running — every value individually unremarkable, the sequence something that card has
+running. Every value individually unremarkable, the sequence something that card has
 never once done. Sajja et al. (arXiv 2604.13125) make the general version of this
 argument: a generator that matches marginals cannot preserve joint structure, and the gap
 is measurable.
 
-`replay_host` is the constructive answer. Do not approximate the joint — copy it, from the
+`replay_host` is the constructive answer. Do not approximate the joint, copy it, from the
 one account entitled to it. A contiguous block of the victim's real history: its own gap
 sequence with per-gap jitter, its own amount sequence under one shared scale factor,
 started on the weekday and hour the block originally ran at. The attacker needs statement
@@ -27,18 +27,18 @@ Recall does not move off the false-positive budget.
 carry no usable signal in this setup at all: replace every one of them with values drawn
 from REAL FRAUD and recall stays at 0.00%. A better sequence model improves exactly those
 ten columns and nothing else. So the headline cannot move, and if it does, the correct
-reading is that the earlier result is wrong — not that this vector is good.
+reading is that the earlier result is wrong, not that this vector is good.
 
 THE FIRST RESULT IS THAT MOST VICTIMS CANNOT BE REPLAYED
 --------------------------------------------------------
-A block of k attack transactions has to be cut from k+2 real ones — k that are actually
+A block of k attack transactions has to be cut from k+2 real ones, k that are actually
 replayed, one whose gap is read and discarded, and one held back so the victim's last real
-transaction is never copied — and IEEE-CIS accounts are short: the eligible test hosts have
+transaction is never copied, and IEEE-CIS accounts are short: the eligible test hosts have
 a median of TWO transactions each. So on the pool the loop actually uses, only a small
 minority of campaigns can replay at all and the rest fall back to mimicry. Both the k+2
 rate and the k+1 rate the arithmetic strictly needs are printed, so the price of that
 last-transaction guarantee is visible instead of folded into the headline. That is not an implementation limit, it is the same limit a real
-attacker faces — you cannot replay a statement with three lines on it — and it caps what
+attacker faces. You cannot replay a statement with three lines on it, and it caps what
 any sequence-based attack can do on this population before any detector is involved.
 
 It also means a comparison run on that pool is mostly mimicry against mimicry and cannot
@@ -51,7 +51,7 @@ WHAT THE PROBE CAN STILL DECIDE
 -------------------------------
   1. Is the sequence actually more realistic? Measured on statistics the marginals do not
      constrain, so a vector that matched only the marginals could not score well on them
-     by accident — and scored against a MEASURED ceiling rather than against the victim's
+     by accident, and scored against a MEASURED ceiling rather than against the victim's
      full history. A three-to-nine transaction slice of a real series does not carry that
      series' dispersion or autocorrelation, so the obvious references (gap CV ratio 1.00,
      autocorrelation gap 0.00) are unreachable by any replay, and `ceiling_stats` cuts
@@ -60,7 +60,7 @@ WHAT THE PROBE CAN STILL DECIDE
   2. Does that realism buy anything once the ceiling is removed? Transplant the inherited
      block from real fraud, as in experiment E of `why_the_attacks_score_zero.py`. That
      makes the campaigns detectable at all, which means the controlled columns are finally
-     visible — and it is the only place a difference between the two vectors could show
+     visible, and it is the only place a difference between the two vectors could show
      up. If replay is genuinely stealthier, its transplanted recall is LOWER than
      mimicry's. If the two land together, then better sequence modelling buys nothing even
      with the ceiling removed, and that is the finding.
@@ -137,7 +137,7 @@ def replay_feasibility(pool: HostPool, temporal, margin: int = 2) -> float:
 
     `margin=2` is what the generator asks for. `margin=1` is what the arithmetic strictly
     needs, and the gap between the two is the price of never copying the victim's last
-    real transaction — reported so the cost of that guarantee is visible rather than
+    real transaction. Reported so the cost of that guarantee is visible rather than
     folded silently into the headline feasibility rate.
     """
     lens = pool._ends - pool._starts
@@ -155,14 +155,14 @@ def _lag1(x: np.ndarray) -> float:
 
 
 def ceiling_stats(hosts: HostPool, temporal, rng, n_blocks: int = 8_000) -> dict:
-    """What a PERFECT replay could score. Measured, not assumed — and it is not 1.00.
+    """What a PERFECT replay could score. Measured, not assumed, and it is not 1.00.
 
     The obvious reference for "does this campaign behave like this card behaves" is the
     card's own full history: gap CV ratio 1.00, autocorrelation gap 0.00. That reference
     is wrong, and wrong in a direction that understates the result.
 
     A campaign is three to nine transactions. A contiguous slice that short does not carry
-    the whole series' dispersion or its autocorrelation — a card that goes quiet for a
+    the whole series' dispersion or its autocorrelation, a card that goes quiet for a
     week and then spends three times in an evening has a high CV over a year and a much
     lower one inside any one window of it. So even a replay that copied a real block with
     no jitter and no scaling at all would not score 1.00, and scoring it against 1.00
@@ -199,7 +199,7 @@ def ceiling_stats(hosts: HostPool, temporal, rng, n_blocks: int = 8_000) -> dict
         if np.isfinite(r) and np.isfinite(b):
             ac.append(b - r)
         # The hour ceiling is measured under the SAME jitter rather than set to 100%.
-        # An unjittered copy would trivially score 100% — its hours ARE the victim's —
+        # An unjittered copy would trivially score 100%. Its hours ARE the victim's,
         # but the generator jitters every gap, and +-10% of a week is +-17 hours. What
         # this asks is how much of the hour alignment survives that, which is the only
         # version of the number the two vectors can fairly be read against.
@@ -221,7 +221,7 @@ def sequence_stats(vector_cls, profile, hosts, rng) -> dict:
     away.
 
     Each is expressed relative to the victim's own real history, so both vectors are
-    scored on one scale — and each is read against `ceiling_stats`, not against the
+    scored on one scale, and each is read against `ceiling_stats`, not against the
     victim's full history, because a three-to-nine transaction slice cannot reach the
     latter even when it is a genuine copy.
     """
@@ -268,7 +268,7 @@ def sequence_stats(vector_cls, profile, hosts, rng) -> dict:
         #    card has ever really done. NOT a joint-structure statistic and not scored as
         #    one: it is a marginal property, and mimicry wins it by construction because
         #    it draws inside the victim's 35th-75th percentile band and so can barely
-        #    exceed a peak. What it measures for replay is REPLAY_SCALE — the block is the
+        #    exceed a peak. What it measures for replay is REPLAY_SCALE. The block is the
         #    victim's own shape multiplied by up to 1.3, and a block containing the
         #    victim's largest transaction then clears their record. It is reported because
         #    that trade is worth naming: a replay at scale 1.0 is perfectly faithful and
@@ -367,7 +367,7 @@ def report(pool_name: str, detect: pd.DataFrame, seq: pd.DataFrame) -> None:
         print(f"  {label:42s} {r[('gap_cv_vs_victim', 'mean')]:16.2f} "
               f"{r[('lag1_autocorr_gap', 'mean')]:13.2f} "
               f"{r[('later_txns_on_a_victim_hour', 'mean')]:15.1%} "
-              f"{('—' if not np.isfinite(over) else f'{over:.1%}'):>12s}")
+              f"{('n/a' if not np.isfinite(over) else f'{over:.1%}'):>12s}")
     print("\n  The top row is the CEILING, not an ideal: it is what real, uncopied blocks "
           "of these\n  victims' own histories score on the same statistics. A campaign is "
           "3-9 transactions,\n  and a slice that short does not carry the whole series' "
@@ -404,7 +404,7 @@ def report(pool_name: str, detect: pd.DataFrame, seq: pd.DataFrame) -> None:
               "legitimate traffic. Nothing is being\n                detected, so there "
               "was nothing for a better sequence model to move.")
     else:
-        print(f"    prediction: BROKEN — {gen:.2%} caught as generated, well above the "
+        print(f"    prediction: BROKEN, {gen:.2%} caught as generated, well above the "
               f"{FPR:.1%} budget.\n                That contradicts experiment E, and it "
               "is the earlier result that needs\n                re-checking rather than "
               "this one.")
@@ -427,13 +427,13 @@ def report(pool_name: str, detect: pd.DataFrame, seq: pd.DataFrame) -> None:
     ratio = tr_m / tr_r if tr_r > 0 else float("inf")
 
     print(f"    ceiling   : with the inherited block transplanted from real fraud, "
-          f"mimicry is caught\n                {tr_m:.2%} and replay {tr_r:.2%} — paired "
+          f"mimicry is caught\n                {tr_m:.2%} and replay {tr_r:.2%}, paired "
           f"difference {d_mean:+.2%}, 95% CI +-{ci:.2%}\n                "
           f"(t_{{.975,{n - 1}}}={tcrit:.2f}, {n} seeds, p={pval:.2f}).")
     if abs(d_mean) > ci and ratio >= STEALTH_RATIO:
         print(f"                Mimicry is caught {ratio:.2f}x as often, so the copied "
               "trajectory IS\n                stealthier once the controlled columns can "
-              "be seen at all — and that\n                would matter on any deployment "
+              "be seen at all, and that\n                would matter on any deployment "
               "where the attacker does not inherit a\n                known-good "
               "customer's context.")
     elif abs(d_mean) > ci and ratio <= 1 / STEALTH_RATIO:
@@ -443,7 +443,7 @@ def report(pool_name: str, detect: pd.DataFrame, seq: pd.DataFrame) -> None:
     else:
         print("                Zero is inside the interval, so the two land together. "
               "Even with the\n                ceiling removed, copying the victim's joint "
-              "structure buys no evasion\n                over resampling its marginals — "
+              "structure buys no evasion\n                over resampling its marginals: "
               "the sequence realism above is a fidelity\n                result, not a "
               "security one.")
         print(f"                Powered to rule out a paired gap beyond {ci:.2%}, so an "
@@ -455,7 +455,7 @@ def main() -> None:
     t0 = time.time()
     base = load_base_data(source="ieee")
     print(f"[data] {base.describe()}")
-    print(f"[probe] {len(SEEDS)} seeds, {N} attack rows each, un-adapted detector — the "
+    print(f"[probe] {len(SEEDS)} seeds, {N} attack rows each, un-adapted detector. The "
           f"same setting\n        experiment E of why_the_attacks_score_zero.py ran in.")
 
     pools = (("as the loop uses it", 2), (f"gated to >={MIN_REPLAYABLE} real txns", MIN_REPLAYABLE))
@@ -474,8 +474,8 @@ def main() -> None:
     loose, loose1 = first["replay_feasible"].mean(), first["replay_feasible_min_margin"].mean()
     print(f"\n{'=' * 86}\n  Standing result, independent of any detector: on the pool the "
           f"loop actually uses,\n  only {loose:.1%} of campaigns have a victim with enough "
-          "history to replay. IEEE-CIS\n  accounts are short — the eligible test hosts "
-          "have a median of two transactions —\n  so a sequence-level attack has almost no "
+          "history to replay. IEEE-CIS\n  accounts are short. The eligible test hosts "
+          "have a median of two transactions,\n  so a sequence-level attack has almost no "
           "material to work with on this population,\n  and neither would a real attacker "
           "reading those statements. Dropping the held-back\n  last transaction, which is "
           f"the loosest bound the arithmetic allows, moves it to {loose1:.1%};\n  the "

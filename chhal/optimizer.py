@@ -1,31 +1,31 @@
-"""The constrained evasion optimizer — the novel core, with the plausibility guardrail.
+"""The constrained evasion optimizer. The novel core, with the plausibility guardrail.
 
 Given a seed AttackBatch and the CURRENT detector, nudge what an attacker actually
-controls to lower the detector's fraud score — but only within a realistic, executable
+controls to lower the detector's fraud score, but only within a realistic, executable
 envelope. Without that guardrail you get "attacks" that fool the model yet that no real
 fraudster could execute, which would destroy the real-world-feasibility score.
 
 Why the search moves a TIMELINE and not a feature vector
 --------------------------------------------------------
 Nine features are attacker-influenced, but only four of them are *settable*: the amount,
-the payee flag, the rail, and the destination. The other five —
+the payee flag, the rail, and the destination. The other five:
 
     hour, velocity_1h, velocity_24h, time_since_last_txn_min, amount_to_avg_ratio
 
-— are not choices at all. They are what a timeline LOOKS LIKE once it has happened. You
+are not choices at all. They are what a timeline LOOKS LIKE once it has happened. You
 cannot decide to have transacted four times in the past hour; you can only transact four
 times, and then that is what the counter reads.
 
 An earlier version of this file perturbed all nine as independent scalars. That silently
 undid the entire campaign architecture: 59-93% of the rows it emitted were physically
 impossible, including 13-42% claiming more transactions in the last hour than in the last
-twenty-four — an arithmetic impossibility, since the 1h window is contained in the 24h
+twenty-four, an arithmetic impossibility, since the 1h window is contained in the 24h
 one. The seed batches were clean; the optimizer was the thing breaking them, and because
 its output IS the benchmark, the fidelity population and the training additions, nothing
 downstream was ever measured on a coherent row.
 
-So the search now moves the two things a fraudster genuinely decides — WHEN to transact
-and FOR HOW MUCH — plus the three flags, and re-derives the rest through
+So the search now moves the two things a fraudster genuinely decides. WHEN to transact
+and FOR HOW MUCH, plus the three flags, and re-derives the rest through
 `chhal.behaviour.derive`, the same function applied to the 590,540 real transactions.
 Consistency is not restored afterwards; it cannot be violated, for the same reason it
 cannot be violated in the red team's renderer.
@@ -38,12 +38,12 @@ Method: gradient-free (evolutionary hill-climb) over the timeline parameters. No
 gradients through LightGBM needed, which keeps it simple and model-agnostic.
 
 Constraints on every candidate:
-  (a) business rules   — takeover happens after the card is compromised, gaps are
+  (a) business rules  , takeover happens after the card is compromised, gaps are
                          positive, amounts non-negative, valid channel codes;
-  (b) realistic manifold — each DIRECTLY SET feature stays within [q0.5%, q99.5%] of the
+  (b) realistic manifold, each DIRECTLY SET feature stays within [q0.5%, q99.5%] of the
                          base population, and inter-arrival gaps stay within the observed
                          envelope;
-  (c) attacker control — only settable features move; the issuer's view is untouchable
+  (c) attacker control, only settable features move; the issuer's view is untouchable
                          and the derived block is recomputed, never assigned.
 """
 from __future__ import annotations
@@ -134,7 +134,7 @@ class EvasionOptimizer:
            the experiment. Constant columns are frozen.
         2. A column the seed spreads over a band may move, but only `amount_widen` times
            outside that band. Otherwise the search walks every vector down to the same
-           q0.5% amount floor — 46% of rows landed on exactly one value that way — which
+           q0.5% amount floor, 46% of rows landed on exactly one value that way, which
            destroys both the vector's meaning and any diversity claim made about it.
 
         Both envelopes are intersected with the global plausibility manifold, which still
@@ -174,7 +174,7 @@ class EvasionOptimizer:
         Non-tautological companion to fidelity.on_manifold_rate: that metric is measured
         on this optimizer's OWN clipped output against the SAME bounds, so it is ~1.0 by
         construction and only proves the clip is wired correctly. This measures how often
-        the search actually WANTED to leave the manifold — whether the guardrail is doing
+        the search actually WANTED to leave the manifold, whether the guardrail is doing
         real work, not merely present.
 
         Measured over the four settable features only. The derived block is no longer
@@ -205,7 +205,7 @@ class EvasionOptimizer:
         # Entities are contiguous blocks and within a block the host's real history comes
         # first, so an attack row's predecessor is always the row immediately before it.
         if idx[0] == 0:
-            raise ValueError("first timeline row is an attack — host history is missing")
+            raise ValueError("first timeline row is an attack, host history is missing")
         gaps = ts[idx] - ts[idx - 1]
         ent_a = ent[idx]
         first_of_entity = np.r_[True, ent_a[1:] != ent_a[:-1]]
@@ -220,7 +220,7 @@ class EvasionOptimizer:
 
         Not from the global manifold. `time_since_last_txn_min`'s q99.5 is about three
         weeks, because it is dominated by dormant cards and by the 30-day placeholder a
-        first-ever transaction gets — so using it as a per-hop ceiling let a bust-out
+        first-ever transaction gets, so using it as a per-hop ceiling let a bust-out
         spread itself over a year and a card-testing run put its probes 39 days apart.
         Those are not slower versions of the attack, they are different attacks, and a
         vector that can be re-timed into another vector is not a vector.
@@ -355,7 +355,7 @@ class EvasionOptimizer:
                 "frac_off_manifold_pre_clip": (
                     float(np.mean(self._clip_hits)) if self._clip_hits else 0.0
                 ),
-                # the derived block is never clipped — this reports where it landed
+                # the derived block is never clipped. This reports where it landed
                 "derived_on_manifold_rate": derived_ok,
                 "consistency_violations": {k: float(v) for k, v in viol.items()},
             },

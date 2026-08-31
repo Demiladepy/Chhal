@@ -1,7 +1,7 @@
 """Mitigation: what the defence actually DOES, and what it saves.
 
 Detection is scored in recall and AUC. Mitigation has to be scored in money, because
-the decision is an economic one — see chhal/mitigation.py.
+the decision is an economic one, see chhal/mitigation.py.
 
 Protocol
 --------
@@ -120,7 +120,7 @@ def main() -> None:
           f"(in-sample {ece_insample:.4f}, which is why we do not quote it)")
 
     # The comparator, tuned on the held-back half and never on what it is priced against
-    # — and held to the SAME friction budget our own policy has to live inside. Without
+    #, and held to the SAME friction budget our own policy has to live inside. Without
     # that second constraint the comparison was rigged in our favour in one direction
     # and against us in the other: an unconstrained ladder buys its low cost by
     # challenging 64% of traffic, which no issuer would ship, while our policy was
@@ -176,7 +176,7 @@ def main() -> None:
     policy = ActionPolicy(costs, POLICY_CFG)
     actions = policy.decide(p, amt)
     # The policy with its analyst queue closed. Same action set and same friction budget
-    # as the ladder, so the gap between the two is amount-awareness and nothing else —
+    # as the ladder, so the gap between the two is amount-awareness and nothing else,
     # which is what lets the saving be attributed instead of just claimed.
     no_queue = ActionPolicy(costs, PolicyConfig(max_review_rate=0.0,
                                                 max_stepup_rate=POLICY_CFG.max_stepup_rate))

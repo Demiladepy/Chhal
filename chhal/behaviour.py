@@ -1,9 +1,9 @@
-"""Behavioural features derived from an actual timeline — one implementation, two callers.
+"""Behavioural features derived from an actual timeline, one implementation, two callers.
 
 `velocity_1h`, `velocity_24h`, `time_since_last_txn_min` and `amount_to_avg_ratio` are
 not independent numbers. They are four views of the same underlying thing: a sequence of
 transactions by one account, in time order. Sampling them separately produces rows that
-cannot exist — a row claiming four transactions in the last hour while also claiming the
+cannot exist, a row claiming four transactions in the last hour while also claiming the
 previous one was five hours ago. Before this module existed, 100% of
 `threshold_hugging`'s
 rows violated that constraint, against 0% of real traffic, because real traffic is
@@ -30,7 +30,7 @@ FIRST_TXN_GAP_MIN = 43_200.0   # 30 days, used when an account has no prior tran
 # IEEE-CIS's TransactionDT counts seconds from an undisclosed epoch. The empirical
 # diurnal minimum sits at raw hour ~8, so this shift puts the trough near 04:00 local.
 # The *shape* is real; only the clock label is aligned. It lives here because BOTH the
-# real-data preparation and the red team's generated campaigns must use the same one —
+# real-data preparation and the red team's generated campaigns must use the same one,
 # they briefly did not, which silently shifted every generated hour by five hours.
 HOUR_OFFSET = -5
 
@@ -141,7 +141,7 @@ def assemble_frame(entity: np.ndarray, timestamp_s: np.ndarray, amount: np.ndarr
 
     # The card keeps ageing while the attacker holds it. The inherited age was read at
     # the host's LAST real transaction (hosts.py), so that is the instant the clock
-    # starts from — not the account's first-ever transaction, whose span is already
+    # starts from, not the account's first-ever transaction, whose span is already
     # inside the inherited value and would otherwise be counted twice.
     last_real = (pd.Series(np.where(is_attack, np.nan, timestamp_s))
                  .groupby(entity).transform("max").to_numpy())

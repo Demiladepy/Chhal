@@ -2,11 +2,11 @@
 
 The supervised arm has a structural blind spot that no amount of retraining removes:
 it can only recognise what it has been shown. The brief asks for defence against
-*emerging, novel* attacks — by definition the ones absent from training. So the loop
+*emerging, novel* attacks, by definition the ones absent from training. So the loop
 retraining on last iteration's attacks is necessary and not sufficient.
 
 The anomaly arm is trained on LEGITIMATE traffic only and never sees a fraud label. It
-answers a different question — "how unlike normal traffic is this?" — which stays
+answers a different question: "how unlike normal traffic is this?", which stays
 meaningful for an attack family invented after training. It is weaker than the
 supervised arm wherever the supervised arm has coverage, and that is fine: it is not
 there to win, it is there to be uncorrelated.
@@ -16,7 +16,7 @@ What the measurement said
 Run `scripts/ensemble_check.py`. The honest answer is mixed and worth reading before
 quoting any of this:
 
-  * The anomaly arm **on its own is useless here** — 0.000 recall on an unseen attack
+  * The anomaly arm **on its own is useless here**, 0.000 recall on an unseen attack
     family and 0.006 on real fraud at a 0.1% budget. Essentially random.
   * Fusing by `max` on a shared percentile axis is **worse than not doing it**, because
     it spends part of the false-positive budget on an arm that carries 0.0% of the
@@ -25,20 +25,20 @@ quoting any of this:
     rescue it either. It helped once, on the 12-feature space this module was first
     written for; the linkage block changed that and this docstring did not keep up, so
     for a while the file recommended a variant its own script measured as worse. Numbers
-    are deliberately not quoted here any more — `scripts/ensemble_check.py` prints the
+    are deliberately not quoted here any more, `scripts/ensemble_check.py` prints the
     current ones and derives its recommendation from them, so the two cannot drift apart
     again.
 
 The reason the arm fails is our own doing, and it is the interesting part. Attack rows
 are drawn through the inverse CDF of real legitimate traffic, and what the attacker sets
-is held inside the plausibility manifold, so they sit on-manifold *by construction* —
-that is exactly what the fidelity guardrail was built to guarantee. A detector whose entire question is "is
+is held inside the plausibility manifold, so they sit on-manifold *by construction*.
+That is exactly what the fidelity guardrail was built to guarantee. A detector whose entire question is "is
 this off-manifold?" cannot see them. The better our fidelity claim gets, the less an
 outlier detector can contribute.
 
 Both `Ensemble` and `StackedDetector` are kept, and neither is presented as the thing to
 ship: run `scripts/ensemble_check.py` and read the verdict it computes. The negative
-result is worth being able to reproduce, and worth reporting — a measurement that changed
+result is worth being able to reproduce, and worth reporting, a measurement that changed
 our own minds is better evidence than one that confirmed them.
 
 Fusing them
@@ -46,7 +46,7 @@ Fusing them
 Raw scores from a gradient-boosting model and an isolation forest are not comparable,
 so both are mapped onto the same axis first: the percentile of REFERENCE LEGITIMATE
 TRAFFIC they sit above. 0.999 from either arm means "more extreme than 99.9% of real
-customers". On that shared axis the fusion is `max` — flag if EITHER arm finds the
+customers". On that shared axis the fusion is `max`, flag if EITHER arm finds the
 transaction extreme, which is exactly the semantics wanted when one arm may be blind.
 
 That also keeps the false-positive budget controllable: thresholding the fused score
@@ -146,7 +146,7 @@ class StackedDetector:
 
     This is the fusion that actually helps. The anomaly score is an issuer-side signal
     computed at scoring time, not something an attacker sets, so attacks still live in
-    FEATURE_COLUMNS exactly as before and the frozen contract is untouched — the model
+    FEATURE_COLUMNS exactly as before and the frozen contract is untouched. The model
     simply gets one more column the red team cannot reach.
 
     Exposes the same `score` / `top_gain_features` surface as `Detector`, so evaluation,

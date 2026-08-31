@@ -3,7 +3,7 @@
 `card_testing` is the easiest vector in the suite: PCI-mandated to catch, 97% caught after
 the loop, and it anchors the top of the scale. That number means nothing on its own,
 because the cheapest way to reach it is to flag every repeated same-amount attempt on a
-card — which is also what a dunning run looks like. Stripe's own documentation says
+card, which is also what a dunning run looks like. Stripe's own documentation says
 subscription retries "can look like card testing".
 
 So this script reports card-testing recall and the false-positive rate on dunning at the
@@ -14,8 +14,8 @@ merchant running a subscription book pays for that recall in declined renewals.
 optimized against the detector, and the loop never trains on it.
 
 Two variants:
-  strict   is_new_beneficiary = 0.0  — a retry goes to an already-paid merchant
-  hard     is_new_beneficiary = 0.90 — the card-testing rate; happens after a card update
+  strict   is_new_beneficiary = 0.0 , a retry goes to an already-paid merchant
+  hard     is_new_beneficiary = 0.90. The card-testing rate; happens after a card update
                                        creates a fresh payment record
 
 The second exists because if the two populations separate only on that one binary column,
@@ -141,7 +141,7 @@ def main() -> None:
         print(f"\n  The hard variant is flagged {ratio:.1f}x as often as the strict one, so "
               "much of the\n  separation is `is_new_beneficiary` rather than the retry "
               "shape. The detector is\n  reading WHO is being paid, not HOW the sequence "
-              "behaves — and a merchant whose\n  card updater resets the payee record "
+              "behaves, and a merchant whose\n  card updater resets the payee record "
               f"loses {hard:.2%} of its retries.")
     else:
         print("\n  Both dunning variants land together, so the separation is behavioural "

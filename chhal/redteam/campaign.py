@@ -6,17 +6,17 @@ identity empties itself in an afternoon, a victim's account drains through three
 transfers in four minutes. Sampling `velocity_24h` and `time_since_last_txn_min`
 separately cannot represent any of that, and produces rows that contradict themselves.
 
-So a vector now declares a `TemporalProfile` — how many accounts, how many transactions
-each, how far apart, how the amount moves across the campaign — and the generator lays
+So a vector now declares a `TemporalProfile`. How many accounts, how many transactions
+each, how far apart, how the amount moves across the campaign, and the generator lays
 out an actual timeline. The behavioural features are then DERIVED from that timeline by
 `chhal.behaviour`, the same function that derives them from the 590,540 real
 transactions. Consistency is not enforced afterwards; it is impossible to violate.
 
-The history a campaign is measured against is not generated either — it is the REAL
+The history a campaign is measured against is not generated either. It is the REAL
 transaction history of a real, never-fraudulent account (see hosts.py). So
 `amount_to_avg_ratio` is the ratio against what that card actually spent, and the
-issuer-side context the attacker cannot control — account age, merchant risk, and the
-dataset's entity-linkage counts — is inherited rather than invented.
+issuer-side context the attacker cannot control, account age, merchant risk, and the
+dataset's entity-linkage counts, is inherited rather than invented.
 """
 from __future__ import annotations
 
@@ -69,8 +69,8 @@ class TemporalProfile:
     bands, so a thin-history host degrades rather than producing nonsense.
 
     How often that fallback fires is not a footnote, and it is now printed rather than
-    implied. IEEE-CIS accounts are short — the benchmark host pool has a MEDIAN of two
-    real transactions — so per-victim mimicry actually engages on 28.8% of benchmark
+    implied. IEEE-CIS accounts are short. The benchmark host pool has a MEDIAN of two
+    real transactions, so per-victim mimicry actually engages on 28.8% of benchmark
     campaigns and 40.5% of train-side ones. The rest are population-band attacks wearing
     a per-victim label. `HostPool.mimicry_engagement` reports it and `HostPool.describe`
     prints it on every run, because "hides in the victim's own profile" and "hides in the
@@ -86,7 +86,7 @@ class TemporalProfile:
     card's spending is not i.i.d.: a big amount is followed by a quiet week, a Friday
     evening burst repeats weekly, a subscription lands on the same day each month. Draw
     six amounts independently from a card's own quantiles and you can easily produce its
-    90th-percentile spend six times running — each value individually unremarkable, the
+    90th-percentile spend six times running, each value individually unremarkable, the
     sequence something that card has never once done. The detector does not score
     marginals; it scores `amount_to_avg_ratio`, both velocities and the gap, which are
     all functions of the SEQUENCE.
@@ -106,7 +106,7 @@ class TemporalProfile:
     `ceiling_stats` in the probe measures what IS achievable by cutting real, uncopied
     blocks, and the vector is scored against that.
 
-    What the attacker needs for this is exactly what an account takeover gives them —
+    What the attacker needs for this is exactly what an account takeover gives them,
     read access to the statement. It is not a stronger assumption than `mimic_host`,
     only a better use of the same one.
 
@@ -139,9 +139,9 @@ class Campaigns:
     timestamp_s: np.ndarray
     amount: np.ndarray
     is_attack: np.ndarray   # False for the host's real transactions
-    inherited: np.ndarray   # (n_rows, len(INHERITED_FEATURES)) — the host's issuer-side state
-    # The real account each row was mounted on. Carried for auditing only — no feature
-    # is derived from it — so the no-leakage claim can be checked instead of trusted.
+    inherited: np.ndarray   # (n_rows, len(INHERITED_FEATURES)). The host's issuer-side state
+    # The real account each row was mounted on. Carried for auditing only. No feature
+    # is derived from it, so the no-leakage claim can be checked instead of trusted.
     host_account: np.ndarray | None = None
 
     def truncate_to(self, n_attack_rows: int) -> "Campaigns":
@@ -253,14 +253,14 @@ def _phase_align(earliest: int, latest: int, target_hour: int, target_dow: int,
     """A moment in [`earliest`, `latest`] on the block's own hour AND weekday.
 
     `_takeover_time` aligns the hour only. That is enough when the gaps come from a band,
-    but a replayed block carries a weekly rhythm in its gaps — a Friday-evening slice
+    but a replayed block carries a weekly rhythm in its gaps, a Friday-evening slice
     started on a Tuesday morning lands its whole sequence on the wrong days, and
     `day_of_week` is a column the detector reads.
 
     Chosen uniformly among the matching instants in the window rather than taken as the
     first one at or after `earliest`. Hour-and-weekday matches recur weekly, so "the first
     one" is a draw from a single week and the campaign then waits however long that
-    happens to be — a mean three and a half days later than the uniform draw the other
+    happens to be, a mean three and a half days later than the uniform draw the other
     vectors make. Picking among the four-or-so slots inside the window instead keeps the
     wait comparable and keeps it inside the window, which taking the first one did not.
     """
@@ -279,7 +279,7 @@ def _phase_align(earliest: int, latest: int, target_hour: int, target_dow: int,
 # a narrow band plus short hops meant a vector never appeared at some hours at all:
 # `upi_collect` emitted ZERO transactions in thirteen of the twenty-four, so the single
 # stump `hour < 12` excluded the entire vector. Real legitimate traffic has no empty
-# hour — its quietest is still 0.36% of volume — and neither does real fraud. The story
+# hour. Its quietest is still 0.36% of volume, and neither does real fraud. The story
 # survives the fix, because scams do catch people at four in the morning; it is only
 # the certainty that was fake.
 OFF_BAND_START_P = 0.15
@@ -324,7 +324,7 @@ def _snap_hours(a_ts: np.ndarray, host_hours: np.ndarray | None,
     two or three log-uniform gaps `threshold_hugging` was spread almost uniformly over the
     day, putting 4.4% of its volume at 03:00 where real legitimate traffic has 0.44%.
     For the vector whose entire claim is that it looks normal for its victim, that was
-    the worst place to leak — and it leaked on the one column nobody was watching.
+    the worst place to leak, and it leaked on the one column nobody was watching.
 
     Bursts are left alone (see FREE_CHOICE_GAP_S), and a shift is only accepted if it
     keeps the timeline strictly ordered, so nothing downstream that assumes monotone
@@ -403,7 +403,7 @@ def generate(profile: TemporalProfile, n_attack_rows: int, base_profile,
         # The first attack lands AT the takeover, not one gap after it. `cumsum` alone
         # would push it out by a full inter-arrival, which was a modest offset while the
         # gaps came from the vector's own band and became weeks once they came from the
-        # victim's — long enough to break a coordinated window apart.
+        # victim's, long enough to break a coordinated window apart.
         a_ts = start + np.r_[0.0, np.cumsum(a_gaps[:-1])]
         # Not snapped, because a replayed block's hours came off this card's real
         # timeline and snapping each one independently would break the sequence the

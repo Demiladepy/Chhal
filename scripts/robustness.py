@@ -1,4 +1,4 @@
-"""Multi-seed robustness — turning the headline from a single run into a distribution.
+"""Multi-seed robustness, turning the headline from a single run into a distribution.
 
 Every headline number elsewhere is one representative run. The judge's natural follow-up
 to "isn't this circular?" is "did you just get a lucky seed?" This answers it: re-run the
@@ -6,7 +6,7 @@ whole closed loop across K independent seeds and report the operating-point metr
 mean +/- standard deviation.
 
 It reports the SAME metrics the rest of the project now leads with (recall at a fixed
-false-positive budget, and PR AUC / average precision), not the score>=0.5 numbers — so
+false-positive budget, and PR AUC / average precision), not the score>=0.5 numbers, so
 the spread is on the numbers that actually matter. It is source-aware: it runs on whatever
 `load_base_data` resolves to (real IEEE-CIS if the parquet has been prepared, otherwise the
 synthetic fallback) and records which, so the table is never quietly off real data.
@@ -111,7 +111,7 @@ def plot(agg, out_path):
     ax.set_ylim(0, 1.03)
     ax.set_xlabel("loop iteration")
     ax.set_ylabel(f"benchmark recall @ {agg['primary_fpr']:.1%} FPR")
-    ax.set_title(f"Robustness across {agg['n_seeds']} seeds ({agg['data_source']} source) — "
+    ax.set_title(f"Robustness across {agg['n_seeds']} seeds ({agg['data_source']} source): "
                  "not a lucky seed", fontsize=11.5, weight="bold")
     ax.grid(True, alpha=0.18)
     ax.legend(fontsize=9, loc="lower right", framealpha=0.95)

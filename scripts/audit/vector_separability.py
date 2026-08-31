@@ -4,7 +4,7 @@
 frozen 26 columns it may be nothing of the kind: it shares `bustout`'s high amount band and
 `mimic_host=False`, and differs mainly in the SIGN of its amount trend (0.7 draining vs 1.6
 escalating) and in being shorter. If a classifier cannot tell the two apart, then it is not
-a sixth attack — it is free evidence for generalisation, which is a better thing to have
+a sixth attack. It is free evidence for generalisation, which is a better thing to have
 and an honest thing to say.
 
 Measured, not asserted, two ways:
@@ -71,7 +71,7 @@ def main() -> None:
     m = pd.DataFrame(np.nan, index=ids, columns=ids)
     for r in out:
         m.loc[r["a"], r["b"]] = m.loc[r["b"], r["a"]] = round(r["auc"], 3)
-    print(m.fillna("—").to_string())
+    print(m.fillna("n/a").to_string())
 
     df = pd.DataFrame(out).sort_values("auc")
     print("\nclosest pairs:")
@@ -86,7 +86,7 @@ def main() -> None:
     if lo.auc < 0.75:
         print("  That is close enough to call them one family with two labels.")
     elif lo.auc < 0.90:
-        print("  Separable, but not cleanly — a detector that learns one gets part of the "
+        print("  Separable, but not cleanly, a detector that learns one gets part of the "
               "other\n  for free, which is what the leave-one-out transfer number should "
               "then show.")
     else:

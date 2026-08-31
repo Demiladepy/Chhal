@@ -1,7 +1,7 @@
-"""CP@k — the metric a real alert queue is actually scored on, computed once.
+"""CP@k. The metric a real alert queue is actually scored on, computed once.
 
 An investigation team works a finite queue: k cards a day, whatever the model's ROC looks
-like. Dal Pozzolo et al. (ULB / Worldline) formalised that as Card Precision at k — rank
+like. Dal Pozzolo et al. (ULB / Worldline) formalised that as Card Precision at k, rank
 CARDS by their highest score of the day, take the top k, and ask what fraction of them
 really were compromised. It is the closest thing in the fraud literature to an operational
 metric, which is exactly why it needs handling carefully here.
@@ -15,7 +15,7 @@ measuring itself too kindly, would hand a reviewer their paragraph.
 
 So it is computed here, reported once, and never quoted as a headline.
 
-Reported per day and averaged over days, on the post-purge test split — never pooled
+Reported per day and averaged over days, on the post-purge test split, never pooled
 across the whole window, which would let one busy day dominate.
 """
 import sys

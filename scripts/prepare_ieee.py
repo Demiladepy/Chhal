@@ -89,14 +89,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from chhal.behaviour import derive, hour_of  # noqa: E402
 from chhal.contract import FEATURE_COLUMNS, LABEL_COLUMN, LINKAGE_FEATURES  # noqa: E402
 
-# Expected shape of the genuine dataset — we refuse to proceed on anything else.
+# Expected shape of the genuine dataset. We refuse to proceed on anything else.
 EXPECTED_ROWS = 590_540
 EXPECTED_FRAUDS = 20_663
 
 DOMESTIC_ADDR2 = 87.0     # 88.1% of rows; everything else is cross-border
 TE_SMOOTHING = 50.0       # Bayesian prior weight for merchant-risk target encoding
 TEST_FRAC = 0.25
-EMBARGO_DAYS = 7          # delay period between the splits — see the split block below
+EMBARGO_DAYS = 7          # delay period between the splits, see the split block below
 
 RAW_COLUMNS = [
     "TransactionID", "isFraud", "TransactionDT", "TransactionAmt", "ProductCD",
@@ -156,7 +156,7 @@ def _load_raw(raw_dir: str) -> pd.DataFrame:
             f"{EXPECTED_ROWS} / {EXPECTED_FRAUDS}. This is not the genuine IEEE-CIS "
             f"train_transaction.csv."
         )
-    print(f"[verify] {n:,} rows, {f:,} frauds ({100*f/n:.4f}%) — genuine IEEE-CIS")
+    print(f"[verify] {n:,} rows, {f:,} frauds ({100*f/n:.4f}%), genuine IEEE-CIS")
     return df.sort_values("TransactionDT", kind="mergesort").reset_index(drop=True)
 
 
@@ -164,7 +164,7 @@ def _behavioural_features(df: pd.DataFrame) -> pd.DataFrame:
     """Velocity, recency and amount-ratio computed within each uid over real time.
 
     The arithmetic lives in `chhal.behaviour`, which the red team also calls on its
-    generated campaigns. One implementation, both sides — so whatever relationships hold
+    generated campaigns. One implementation, both sides, so whatever relationships hold
     between these four features in real data hold in the attacks too, and neither can
     drift away from the other.
     """
@@ -194,8 +194,8 @@ def causal_target_encode(key: np.ndarray, y: np.ndarray, is_train: np.ndarray,
     number computed partly from June. No issuer has that. The feature was quietly telling
     the detector how the bucket would turn out.
 
-    The fix is an expanding-window encoding — at each point in time a bucket carries only
-    what had already happened in it — which is what a real merchant risk score is. Rows
+    The fix is an expanding-window encoding, at each point in time a bucket carries only
+    what had already happened in it, which is what a real merchant risk score is. Rows
     sharing a timestamp with the row being encoded are excluded as a block, not just the
     row itself, so simultaneous transactions in the same bucket cannot encode each other.
     Early rows in a bucket fall back to the prior, which is also what an issuer sees for a
@@ -207,8 +207,8 @@ def causal_target_encode(key: np.ndarray, y: np.ndarray, is_train: np.ndarray,
     One thing here is deliberately NOT causal and is called out rather than buried: the
     shrinkage target `prior` is the mean fraud rate over the whole train split, so it does
     contain future information. It is left that way because it is a single scalar applied
-    identically to every row — it shifts all encodings together and cannot rank one row
-    above another — and because a portfolio base rate is something an issuer genuinely
+    identically to every row. It shifts all encodings together and cannot rank one row
+    above another, and because a portfolio base rate is something an issuer genuinely
     does know. Pass `prior` explicitly to pin it.
     """
     y = np.asarray(y, np.float64)
@@ -300,10 +300,10 @@ def build(raw_dir: str, out_path: str, force: bool = False) -> pd.DataFrame:
 
     out[LABEL_COLUMN] = raw.isFraud.astype(np.int64)
 
-    # TEMPORAL split — train on the past, test on the future, with a gap between them.
+    # TEMPORAL split, train on the past, test on the future, with a gap between them.
     #
     # There used to be no gap at all. Measured on the previous build: train `_ts` max
-    # 11,246,605, test min 11,246,665 — SIXTY SECONDS apart. Every headline number was
+    # 11,246,605, test min 11,246,665, SIXTY SECONDS apart. Every headline number was
     # therefore the recall of a detector that learns each attack one minute after it
     # happens, which is not a thing any issuer can do: a card fraud label arrives when
     # the cardholder disputes the charge, days later. The Fraud Detection Handbook calls
@@ -316,10 +316,10 @@ def build(raw_dir: str, out_path: str, force: bool = False) -> pd.DataFrame:
     is_test = (raw.TransactionDT > embargo_end).to_numpy()
     split = np.where(is_train, "train", np.where(is_test, "test", "embargo"))
 
-    # ENTITY LEAKAGE — accounts that sit on both sides of the cut.
+    # ENTITY LEAKAGE, accounts that sit on both sides of the cut.
     #
     # Measured on the current build: 21,337 accounts appeared in train AND test, which
-    # is 52,468 of 129,085 post-embargo test rows — 40.6% of them sat on accounts the
+    # is 52,468 of 129,085 post-embargo test rows, 40.6% of them sat on accounts the
     # detector had already trained on. A temporal split alone does not prevent this,
     # because an account that transacts across the cut lands in both halves.
     #
@@ -345,7 +345,7 @@ def build(raw_dir: str, out_path: str, force: bool = False) -> pd.DataFrame:
     )
 
     # The dataset's own anonymised entity-linkage counts, carried through unchanged.
-    # These are the columns the red team inherits rather than invents — see
+    # These are the columns the red team inherits rather than invents, see
     # contract.LINKAGE_FEATURES for why, and for what happened when we tried to rebuild
     # the signal from features we understand.
     for i, col in enumerate(LINKAGE_FEATURES, start=1):
@@ -372,11 +372,11 @@ def build(raw_dir: str, out_path: str, force: bool = False) -> pd.DataFrame:
           f"between the splits (the gap used to be 60 seconds)")
     print(f"[leak  ] {n_straddle:,} of {n_test_pre_purge:,} post-embargo test rows "
           f"({100*n_straddle/max(n_test_pre_purge, 1):.1f}%) sat on "
-          f"{n_straddle_accounts:,} accounts the detector also trains on — purged")
+          f"{n_straddle_accounts:,} accounts the detector also trains on, purged")
     n_acct = out[ACCOUNT_COLUMN].nunique()
     clean = out.groupby(ACCOUNT_COLUMN)[LABEL_COLUMN].max()
     print(f"[hosts ] {n_acct:,} accounts, {int((clean == 0).sum()):,} of them never "
-          f"fraudulent — those are the ones a campaign may be mounted on")
+          f"fraudulent, those are the ones a campaign may be mounted on")
     print(f"[write ] {out_path}  ({os.path.getsize(out_path)/1e6:.1f} MB, "
           f"{len(FEATURE_COLUMNS)} features)")
     return out

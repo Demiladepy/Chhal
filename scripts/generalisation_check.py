@@ -9,7 +9,7 @@ which is the harder question.
 
 So: train on every vector but one, score the one held out, which the detector has never
 seen in any form. Recall is reported at a FIXED low false-positive operating point (0.1% of real
-legitimate traffic), not at an arbitrary 0.5 threshold — that is how a payments system
+legitimate traffic), not at an arbitrary 0.5 threshold. That is how a payments system
 is actually tuned.
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ def main() -> None:
     # every vector, adapted once against the baseline detector
     adapted = {}
     # These attacks are scored against test-side legitimate traffic, so they compromise
-    # TEST accounts — an evaluation attack must not carry context the detector trained on.
+    # TEST accounts, an evaluation attack must not carry context the detector trained on.
     hosts = HostPool(base.test, exclude_accounts=base.train['_account'])
     print(f"[hosts] {hosts.describe()}")
     for V in ALL_VECTORS:
@@ -93,7 +93,7 @@ def main() -> None:
         det = Detector(seed=7).fit(pool, LABEL_COLUMN)
 
         # Both arms are the held-back slice. The held-out vector's train slice is simply
-        # never used — nothing was fitted on it — which is what "never seen in any form"
+        # never used. Nothing was fitted on it, which is what "never seen in any form"
         # has to mean if the comparison is to be procedurally identical on both sides.
         r_unseen, _ = recall_at_fpr(det, legit_eval, parts[held][1])
         r_seen = float(np.mean([recall_at_fpr(det, legit_eval, parts[i][1])[0]

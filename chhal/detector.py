@@ -1,6 +1,6 @@
 """The blue-team detector: LightGBM over the frozen feature space.
 
-LightGBM is pragmatic SOTA for tabular fraud — fast, strong, interpretable, and
+LightGBM is pragmatic SOTA for tabular fraud, fast, strong, interpretable, and
 deployable, which is exactly what "real-world feasibility" rewards. Swap for XGBoost
 by changing this one class; nothing else depends on the model internals.
 """
@@ -48,7 +48,7 @@ class Detector:
     def top_gain_features(self, n: int = 5) -> List[str]:
         """Global feature ranking by LightGBM gain importance.
 
-        This is a WHOLE-MODEL ranking, not a per-transaction attribution — it is the
+        This is a WHOLE-MODEL ranking, not a per-transaction attribution. It is the
         same for every call until the model is next retrained. It does not vary by
         batch/row, so there is no `df` argument to pass in.
         """

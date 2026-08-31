@@ -1,8 +1,8 @@
-"""Mitigation — turning a score into a decision, and a decision into money.
+"""Mitigation, turning a score into a decision, and a decision into money.
 
 The brief says the defence must "detect, flag, and **mitigate**". Everything upstream
 of this file only detects: `Detector.score` returns a fraud probability and stops. A
-probability is not a mitigation, and neither is `score >= 0.5` — no payments system has
+probability is not a mitigation, and neither is `score >= 0.5`. No payments system has
 ever been tuned that way, because the four things you can do to a transaction have
 wildly different costs and the right one depends on the amount.
 
@@ -25,7 +25,7 @@ Two consequences fall straight out, and both are the point:
     probability is cheaper to allow than to decline; a $3,000 one at the same
     probability is not. A single global threshold cannot express that.
   * It only works on CALIBRATED probabilities. A raw gradient-boosting score is not
-    P(fraud) — and ours is trained on a pool with attacks injected, so its implied base
+    P(fraud), and ours is trained on a pool with attacks injected, so its implied base
     rate is not the deployment base rate either. Multiplying an uncalibrated score by a
     dollar amount produces confident nonsense, so calibration is mandatory here rather
     than a refinement.
@@ -102,8 +102,8 @@ def calibration_error(p: np.ndarray, y: np.ndarray, bins: int = 20) -> float:
 class CostModel:
     """What each outcome costs, in the currency of the base data (USD for IEEE-CIS).
 
-    Defaults are industry-typical order-of-magnitude figures, not measured constants —
-    they are here to be replaced with an issuer's real numbers, at which point every
+    Defaults are industry-typical order-of-magnitude figures, not measured constants.
+    They are here to be replaced with an issuer's real numbers, at which point every
     result below re-derives itself.
     """
 
@@ -153,8 +153,8 @@ class PolicyConfig:
     `max_stepup_rate` exists because leaving it out was an inconsistency, not an
     oversight: the unconstrained policy argued an 8% review rate "is not deployable"
     while itself challenging 15.2% of all traffic and 14.3% of legitimate customers.
-    A challenge is cheaper than an analyst, not free — every one of them is a customer
-    stopped mid-payment — so it gets a budget too.
+    A challenge is cheaper than an analyst, not free. Every one of them is a customer
+    stopped mid-payment, so it gets a budget too.
     """
 
     max_review_rate: float = 0.005   # analysts can only look at 0.5% of traffic
@@ -199,7 +199,7 @@ class ActionPolicy:
         """Keep only the `max_rate` share of `action` that buys the most, demote the rest.
 
         `closed` names actions whose own budget has already been allocated by an earlier
-        pass. Without it, demotions land wherever the cost matrix points — which put the
+        pass. Without it, demotions land wherever the cost matrix points, which put the
         review queue 74% over its cap once a second pass ran after it. ALLOW is never
         closed, so a fallback always exists.
         """
@@ -271,7 +271,7 @@ class ActionPolicy:
 
 
 def allow_all_baseline(costs: CostModel, y_true: np.ndarray, amount: np.ndarray) -> Dict:
-    """Do nothing at all — the number every other policy has to beat."""
+    """Do nothing at all. The number every other policy has to beat."""
     realised = np.where(y_true == 1, costs.fraud_loss(amount), 0.0)
     return {"n": int(len(y_true)), "total_cost": round(float(realised.sum()), 2),
             "cost_per_1k_txns": round(float(realised.sum() / len(y_true) * 1000), 2)}
@@ -279,7 +279,7 @@ def allow_all_baseline(costs: CostModel, y_true: np.ndarray, amount: np.ndarray)
 
 def threshold_baseline(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarray,
                        amount: np.ndarray, threshold: float = 0.5) -> Dict:
-    """Block above a fixed threshold, allow below — the naive policy, priced honestly."""
+    """Block above a fixed threshold, allow below. The naive policy, priced honestly."""
     actions = np.where(p_fraud >= threshold, int(Action.BLOCK), int(Action.ALLOW))
     pol = ActionPolicy(costs, PolicyConfig(max_review_rate=0.0))
     rep = pol.report(actions, y_true, amount)
@@ -301,8 +301,8 @@ def tune_two_thresholds(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarra
 
     `block at score >= 0.5` is a straw man: nobody deploys an untuned threshold, so
     beating it proves nothing about the expected-cost machinery. The honest comparator is
-    the strongest thing a fraud team builds without any of our economics — allow below one
-    threshold, challenge between, block above — with both thresholds tuned on the same
+    the strongest thing a fraud team builds without any of our economics, allow below one
+    threshold, challenge between, block above, with both thresholds tuned on the same
     cost model we use ourselves.
 
     Sorting by score turns the search into prefix sums, so we return the GLOBAL optimum
@@ -354,7 +354,7 @@ def tune_two_thresholds(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarra
 def two_threshold_baseline(costs: CostModel, p_fraud: np.ndarray, y_true: np.ndarray,
                            amount: np.ndarray, t_stepup: float,
                            t_block: float) -> Dict:
-    """Price a tuned allow / step-up / block ladder — amount-blind, no review queue."""
+    """Price a tuned allow / step-up / block ladder, amount-blind, no review queue."""
     actions = np.where(p_fraud >= t_block, int(Action.BLOCK),
                        np.where(p_fraud >= t_stepup, int(Action.STEP_UP),
                                 int(Action.ALLOW)))
@@ -365,7 +365,7 @@ def two_threshold_baseline(costs: CostModel, p_fraud: np.ndarray, y_true: np.nda
 
 def fraud_loss_avoided(costs: CostModel, actions: np.ndarray, y_true: np.ndarray,
                        amount: np.ndarray) -> float:
-    """Share of actual FRAUD LOSS avoided — which is not the same as cost saved.
+    """Share of actual FRAUD LOSS avoided, which is not the same as cost saved.
 
     Total cost reduction nets the friction we impose on legitimate customers against the
     fraud we stop, so it is the number a CFO wants. Fraud loss avoided ignores that

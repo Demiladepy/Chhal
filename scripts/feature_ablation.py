@@ -6,13 +6,13 @@ re-checked rather than taken on trust.
 
 **Why the feature space includes the linkage block.** Twelve hand-derived features catch
 3.1% of real IEEE-CIS fraud at a 0.1% false-positive budget. Adding the dataset's
-anonymised entity-linkage counts (C1-C14) takes that to 19.7% — a 6.4x lift that nothing
+anonymised entity-linkage counts (C1-C14) takes that to 19.7%, a 6.4x lift that nothing
 else approaches. All 339 V-features add two more points on top of it; D1-D15 add nothing.
 
 **Why we could not simply build our own.** Those counts aggregate over devices, phones,
 IPs and cross-card relationships the dataset does not expose. We tried to rebuild the
-signal from what we do understand — distinct counterparties, addresses, emails and card
-attributes per account over time, plus longer velocity windows — and got +0.45 points.
+signal from what we do understand, distinct counterparties, addresses, emails and card
+attributes per account over time, plus longer velocity windows, and got +0.45 points.
 Adding them ON TOP of C1-C14 makes things slightly worse, so they are not merely weaker,
 they are subsumed.
 
@@ -46,7 +46,7 @@ from prepare_ieee import (CHANNEL_MAP, DOMESTIC_ADDR2, EMBARGO_DAYS,  # noqa: E4
 
 # HEAVY: ~13 GB peak RSS and ~45s, because the last tier fits a model on all 339
 # V-columns at once. That is inherent to the question this script asks, not an
-# oversight — but it means a 16 GB machine will be tight and an 8 GB one will not
+# oversight, but it means a 16 GB machine will be tight and an 8 GB one will not
 # finish. Nothing else in the project needs anything like this.
 PEAK_RSS_GB = 13
 RAW = os.path.expanduser("~/chhal-data/raw/train_transaction.csv")
@@ -60,7 +60,7 @@ def main() -> None:
     if not os.path.exists(RAW):
         _download(RAW)
     # float32 for the 370-odd numeric columns. The default float64 read peaked at
-    # 12.7 GB resident, which OOMs a 16 GB machine before the first model is fit —
+    # 12.7 GB resident, which OOMs a 16 GB machine before the first model is fit,
     # and this file has 394 columns of which 339 are the V block. No result here is
     # sensitive to the seventh decimal place.
     head = pd.read_csv(RAW, nrows=200, low_memory=False)
@@ -187,7 +187,7 @@ def main() -> None:
     print("\n=== recall on REAL IEEE-CIS fraud, at a fixed share of real legit traffic flagged ===")
     print(out.to_string(index=False))
     print("\nThe linkage block is the whole story. The counts we can build ourselves recover")
-    print("almost none of it, and stacking ours on top of theirs is a wash — subsumed, not")
+    print("almost none of it, and stacking ours on top of theirs is a wash, subsumed, not")
     print("merely weaker. That is why the red team inherits linkage from a real account")
     print("instead of inventing it: the signal is not reconstructible from what we can see.")
 

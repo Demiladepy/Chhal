@@ -1,4 +1,4 @@
-"""Base transaction distribution — real by default, synthetic as a fallback.
+"""Base transaction distribution. Real by default, synthetic as a fallback.
 
 Two sources, one interface
 --------------------------
@@ -8,7 +8,7 @@ Two sources, one interface
               simulation" is judged against real payment data, and a distance measured
               against a distribution we invented ourselves proves nothing.
 `"synthetic"` The original programmatic distribution. Kept so the repo still runs end
-              to end with no download, and so tests stay fast — never for headline
+              to end with no download, and so tests stay fast, never for headline
               numbers. It is measurably wrong: against real traffic its median amount
               is 13x too high, its median account does 6 transactions a day where the
               real median does 0, and its median inter-transaction gap is 138x too
@@ -19,7 +19,7 @@ Two sources, one interface
 Two things are computed here that the rest of the loop depends on:
 
 `feature_stats`     coarse quantiles used by the evasion optimizer as the plausibility
-                    manifold. Computed on TRAIN ONLY — deriving them from train+test
+                    manifold. Computed on TRAIN ONLY, deriving them from train+test
                     would let the optimizer's guardrail see the future.
 `legit_quantiles`   a fine quantile grid over LEGITIMATE TRAIN traffic only. The red
                     team samples every continuous feature through this grid's inverse
@@ -90,7 +90,7 @@ def _profile_from_train(train: pd.DataFrame) -> tuple:
 # source: real IEEE-CIS
 # ---------------------------------------------------------------------------
 # What the prepared parquet has to look like before we are willing to label results
-# `source=ieee`. The floor is deliberately loose — it is there to catch a truncated or
+# `source=ieee`. The floor is deliberately loose. It is there to catch a truncated or
 # fabricated file, not to pin an exact row count that a future prep change may move.
 IEEE_TOTAL_ROWS = 590_540
 MIN_IEEE_ROWS = 500_000
@@ -170,7 +170,7 @@ def _sample_legit(n: int, rng: np.random.Generator) -> pd.DataFrame:
     })
     acct, ts = _synthetic_accounts(n, rng)
     df["_account"], df["_ts"] = acct, ts
-    # The fallback cannot represent entity linkage — those counts aggregate over devices,
+    # The fallback cannot represent entity linkage, those counts aggregate over devices,
     # phones and cross-card relationships that no generator here has. They are zero-filled
     # and carry no signal, which is one more reason this source must never be quoted.
     for col in LINKAGE_FEATURES:
@@ -198,7 +198,7 @@ def _load_synthetic(n_legit: int, n_baseline_fraud: int, test_frac: float,
                       _sample_baseline_fraud(n_baseline_fraud, rng)], ignore_index=True)
     # Temporal here too, for the same reason it is temporal on the real source: train on
     # the past, test on the future. This used to shuffle and cut, which is a random
-    # split — and since the whole test suite runs on this source, the one place the
+    # split, and since the whole test suite runs on this source, the one place the
     # no-leakage discipline gets exercised was the one place it did not hold. It also
     # made an account appear on both sides only by chance, so the train/test account
     # exclusion looked unnecessary. Sorting by time makes both real.
@@ -224,7 +224,7 @@ def load_base_data(
     source="auto" uses real IEEE-CIS when the prepared parquet exists and falls back to
     synthetic otherwise. Callers that must be unambiguous (anything producing a number
     for the write-up) should pass source explicitly. `n_legit`, `n_baseline_fraud` and
-    `test_frac` apply to the synthetic source only — the real split is temporal and
+    `test_frac` apply to the synthetic source only. The real split is temporal and
     baked into the parquet by scripts/prepare_ieee.py.
     """
     path = ieee_path or DEFAULT_IEEE_PARQUET

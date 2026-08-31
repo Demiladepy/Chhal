@@ -3,7 +3,7 @@
 Entry point: `card_testing`.
 
 `card_testing` is the most separable thing Chhal generates. It sits KS 0.483 from
-legitimate traffic on the columns the red team controls — 43x the sampling-noise floor —
+legitimate traffic on the columns the red team controls, 43x the sampling-noise floor,
 and a classifier tells it apart from any other vector at AUC 1.000. It is also caught
 **0.00%** of the time at a 0.1% false-positive budget, before the optimizer runs and after
 it, and a detector trained on the other five vectors reaches it only **12.2%** of the time.
@@ -18,8 +18,8 @@ side happens to hold.
 
 **That hypothesis is wrong, and experiment D kills it.** Replace all ten columns the red
 team controls with values drawn from real fraud and recall stays at 0.00%. The off-support
-excursion is real — 72% of `card_testing` rows are past the training p99.9 on
-`velocity_1h` — and it is not what is holding the score down.
+excursion is real, 72% of `card_testing` rows are past the training p99.9 on
+`velocity_1h`, and it is not what is holding the score down.
 
 Experiment E finds what is. Every campaign is mounted on a real account selected for never
 having been fraudulent, and inherits that account's issuer-side context whole:
@@ -28,7 +28,7 @@ almost all the real-fraud signal lives (2.25% -> 15.46% recall, `feature_ablatio
 Transplant it from real fraud and detectability comes back immediately.
 
 The host-selection rule exists for anti-leakage reasons and is described in the README as
-belt and braces — hosts are all-legitimate, so recognising one pushes an attack toward
+belt and braces, hosts are all-legitimate, so recognising one pushes an attack toward
 *legit* and makes detection harder rather than easier. It is not belt and braces. It is the
 entire explanation for the 0.00%, and therefore for the left-hand end of the arms-race
 curve.
@@ -36,8 +36,8 @@ curve.
     A  where the scores actually land, against legit and against real fraud
     B  how far outside the training support each controlled feature is
     C  what the trees hold in the leaves these rows reach
-    D  single-feature repair — replace ONE controlled column with a legitimate draw
-    E  block transplant — swap the controlled block, then the inherited block, for real
+    D  single-feature repair, replace ONE controlled column with a legitimate draw
+    E  block transplant, swap the controlled block, then the inherited block, for real
        fraud's own values, across all six vectors
 """
 from __future__ import annotations
@@ -156,7 +156,7 @@ def main() -> None:
           "reached\n  that leaf left behind.")
 
     # ------------------------------------------------------------------ D
-    print("\n=== D. single-feature repair — replace ONE column with a legitimate draw ===")
+    print("\n=== D. single-feature repair, replace ONE column with a legitimate draw ===")
     print("  (higher recall after repair = that column was carrying the excursion)\n")
     base_score = det.score(tgt)
     legit_pool = legit[FEATURE_COLUMNS].to_numpy()
@@ -232,7 +232,7 @@ def main() -> None:
                              inherited_from_fraud=ri, all_from_fraud=ra))
         print(f"  {vid:20s} {r0:12.2%} {rc:13.2%} {ri:15.2%} {ra:12.2%}")
     real_r = float((det.score(fraud[FEATURE_COLUMNS]) >= thr).mean())
-    print(f"  {'(real fraud itself)':20s} {'—':>12s} {'—':>13s} {'—':>15s} {real_r:12.2%}")
+    print(f"  {'(real fraud itself)':20s} {'n/a':>12s} {'n/a':>13s} {'n/a':>15s} {real_r:12.2%}")
     pd.DataFrame(gen_rows).to_csv(
         Path(__file__).resolve().parents[2] / "results" / "inherited_block_transplant.csv",
         index=False)

@@ -1,4 +1,4 @@
-"""Tests for the operating-point metrics — the numbers we actually quote."""
+"""Tests for the operating-point metrics. The numbers we actually quote."""
 from __future__ import annotations
 
 import sys
@@ -18,7 +18,7 @@ def test_threshold_for_fpr_flags_the_requested_share_of_legit():
     """On continuous scores the threshold lands within a hair of the budget.
 
     The tolerance is one part in ten thousand of the budget itself, not the flat
-    +/-5e-4 this used to allow — that was a +/-50% band around a 0.1% budget and would
+    +/-5e-4 this used to allow. That was a +/-50% band around a 0.1% budget and would
     have passed a threshold flagging 0.0006 or 0.0015 without complaint.
     """
     rng = np.random.default_rng(0)
@@ -45,7 +45,7 @@ def test_the_budget_is_never_exceeded_even_when_scores_are_one_big_tie():
 
 def test_a_budget_too_tight_for_any_threshold_returns_no_recall_not_a_bargain():
     """If even the single highest block of scores busts the budget, the honest answer
-    is that nothing can be flagged — not a threshold that flags the block anyway."""
+    is that nothing can be flagged, not a threshold that flags the block anyway."""
     legit = np.full(1_000, 0.7)
     attacks = np.full(100, 0.7)
     rec, thr, realised = recall_at_fpr(legit, attacks, 0.001)

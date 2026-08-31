@@ -1,4 +1,4 @@
-# Chhal — pinned for a reproducible closed-loop run.
+# Chhal, pinned for a reproducible closed-loop run.
 # numpy pinned <2 to match the pandas/lightgbm wheels (ABI compatibility).
 numpy==1.26.4
 pandas==2.2.2

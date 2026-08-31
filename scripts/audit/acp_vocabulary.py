@@ -57,7 +57,7 @@ def main() -> None:
     specs = {n: fetch(VERSION, n) for n in SPECS}
     missing = [n for n, s in specs.items() if s is None]
     if missing:
-        sys.exit(f"could not fetch: {missing} — spec layout may have changed")
+        sys.exit(f"could not fetch: {missing}, spec layout may have changed")
 
     print("=== 1. how many specs are in this version ===")
     total = 0
@@ -114,7 +114,7 @@ def main() -> None:
         for ln in h[:3]:
             print(f"    {n}: {ln.strip()[:90]}")
     rl = sum(s.lower().count("rate_limit") for s in specs.values())
-    print(f"  occurrences of 'rate_limit': {rl} — all of them HTTP error codes, i.e. "
+    print(f"  occurrences of 'rate_limit': {rl}. All of them HTTP error codes, i.e. "
           "transport\n  throttling, not a vocabulary for describing how a payment attempt "
           "was paced.")
 
@@ -131,7 +131,7 @@ def main() -> None:
     print("\n  'browser' is the ONLY permitted channel, and BrowserInfo is required alongside "
           "it.\n  At the one point in the 3DS2 flow where a caller says what kind of client "
           "it is, an\n  agent has no way to say 'agent'. The protocol obliges it to present a "
-          "user agent\n  string, an accept header and a JavaScript flag — to look like a "
+          "user agent\n  string, an accept header and a JavaScript flag, to look like a "
           "browser.")
 
     st = enum_members(block(da, "AuthenticationSession", 80) or da, "status")
