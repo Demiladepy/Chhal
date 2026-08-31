@@ -1,0 +1,7 @@
+held_out_vector,recall_baseline,recall_if_seen(avg of the rest),recall_UNSEEN
+threshold_hugging,0.0,0.5726,0.3418
+bustout,0.0,0.5249,0.403
+card_testing,0.0,0.5659,0.0177
+upi_collect,0.0,0.4694,0.6583
+mule_fanout,0.0,0.5018,0.6749
+autopay_mandate,0.0,0.5591,0.3218

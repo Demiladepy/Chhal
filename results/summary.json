@@ -5,25 +5,25 @@
   "operating_points": {
     "recall_at_fpr=0.001": {
       "baseline": 0.0,
-      "final": 0.808
+      "final": 0.796
     },
     "recall_at_fpr=0.005": {
       "baseline": 0.0013,
-      "final": 0.9107
+      "final": 0.9127
     },
     "recall_at_fpr=0.01": {
       "baseline": 0.0013,
-      "final": 0.931
+      "final": 0.934
     }
   },
   "real_fraud_recall_at_fpr_0.001": {
     "baseline": 0.1422,
-    "final": 0.1502
+    "final": 0.1381
   },
   "baseline_pr_auc": 0.0313,
-  "final_pr_auc": 0.9508,
-  "final_alert_rate": 0.03279,
-  "final_alert_rate_on_real_traffic": 0.00774,
+  "final_pr_auc": 0.9503,
+  "final_alert_rate": 0.03232,
+  "final_alert_rate_on_real_traffic": 0.00719,
   "realised_fpr": {
     "budget=0.001": 0.000998,
     "budget=0.005": 0.004989,
@@ -38,9 +38,9 @@
   },
   "naive_threshold_0.5": {
     "baseline_f1": 0.0023,
-    "final_f1": 0.8808,
-    "final_recall": 0.9227,
-    "final_roc_auc": 0.9936,
+    "final_f1": 0.8819,
+    "final_recall": 0.9257,
+    "final_roc_auc": 0.9937,
     "final_fp_rate_on_legit": 0.0071
   },
   "fidelity": {
@@ -60,7 +60,7 @@
     }
   },
   "iterations": 8,
-  "runtime_seconds": 81.8,
+  "runtime_seconds": 78.8,
   "config": {
     "iterations": 8,
     "attacks_per_vector": 400,
