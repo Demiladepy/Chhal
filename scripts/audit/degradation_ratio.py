@@ -10,12 +10,19 @@ from chhal.redteam.base import BaseProfile
 from chhal.redteam.hosts import HostPool
 base = load_base_data(source="ieee"); rng = np.random.default_rng(11)
 fraud = base.test[base.test[LABEL_COLUMN]==1]; legit = base.test[base.test[LABEL_COLUMN]==0]
-N=500; R=20
-def mks(s): return float(np.mean([ks_2samp(legit[c].to_numpy(), s[c].to_numpy()).statistic for c in CONTROLLED_FEATURES]))
+N=500; R=100
+# Split legit ONCE into a reference and a disjoint probe pool. Every DR numerator is
+# ks(legit_ref, population); the null floor in the denominator must be ks(legit_ref,
+# independent legit) drawn from the DISJOINT probe pool. The earlier code took the floor
+# as ks(full legit, subset OF full legit), so the null sample overlapped its own reference
+# and the floor came out ~1.4x too low, inflating every DR by the same factor. R: 20 -> 100.
+_gi = rng.permutation(len(legit)); _h = len(_gi)//2
+legit_ref, legit_probe = legit.iloc[_gi[:_h]], legit.iloc[_gi[_h:]]
+def mks(s): return float(np.mean([ks_2samp(legit_ref[c].to_numpy(), s[c].to_numpy()).statistic for c in CONTROLLED_FEATURES]))
 def mks_n(pop, n=N, r=R):
     v=[mks(pop.sample(n=min(n,len(pop)), random_state=int(rng.integers(1e6)))) for _ in range(r)]
     return float(np.mean(v)), float(np.std(v))
-floor, floor_sd = mks_n(legit)
+floor, floor_sd = mks_n(legit_probe)
 print(f"NOISE FLOOR (legit vs legit, n={N}, {R} draws) = {floor:.4f} (sd {floor_sd:.4f})\n")
 print(f"{'population':38s} {'n':>5s} {'mean_ks@n=500':>14s} {'DR (=ks/floor)':>15s}")
 rows=[("REAL: all test fraud",fraud),
