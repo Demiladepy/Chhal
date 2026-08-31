@@ -1,7 +1,7 @@
-"""Chhal — the 3-panel live demo (Streamlit).
+"""Chhal. The 3-panel live demo (Streamlit).
 
 Red Team | Live Stream | Blue Team. The dashboard REPLAYS precomputed loop results
-(results/*.csv) — it never trains live, so it cannot stall on stage. Run the loop
+(results/*.csv). It never trains live, so it cannot stall on stage. Run the loop
 first:  python scripts/run_loop.py
 
     streamlit run dashboard/app.py
@@ -18,7 +18,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 
-st.set_page_config(page_title="Chhal — adversarial fraud loop", layout="wide")
+st.set_page_config(page_title="Chhal, adversarial fraud loop", layout="wide")
 
 
 @st.cache_data
@@ -38,14 +38,14 @@ if not (RESULTS / "curve.csv").exists():
 
 curve, per_vector, sample, summary, fidelity = load()
 
-st.title("Chhal — a closed-loop adversarial engine for GenAI payment fraud")
+st.title("Chhal, a closed-loop adversarial engine for GenAI payment fraud")
 st.caption(
     "Every attack the red team invents becomes training ground for a stronger defence. "
-    "The chart tracks detection on **held-out novel attacks the detector never trained on** "
-    "— generalisation, not memorisation."
+    "The chart tracks detection on **held-out novel attacks the detector never trained on**. "
+    "Generalisation, not memorisation."
 )
 
-# Headline metrics, read at the operating point a payments team would actually run —
+# Headline metrics, read at the operating point a payments team would actually run,
 # a fixed share of real legitimate traffic flagged, not an arbitrary 0.5 threshold.
 PRIMARY = "recall_at_fpr=0.001"
 op = summary["operating_points"][PRIMARY]
@@ -56,24 +56,27 @@ if src == "ieee":
                f"IEEE-CIS card transactions** (temporal split, "
                f"{summary['train_rows']:,} train / {summary['test_rows']:,} test).")
 else:
-    st.warning(f"Running on the **{src}** fallback — these numbers must not be quoted. "
+    st.warning(f"Running on the **{src}** fallback, these numbers must not be quoted. "
                f"Run `python scripts/prepare_ieee.py` for the real base population.")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Static detector vs adaptive attacks", f"{op['baseline']:.1%}",
-          help="Baseline recall on the fixed adversarial benchmark — the attacks were "
+          help="Baseline recall on the fixed adversarial benchmark. The attacks were "
                "optimised to evade exactly this detector, so near-zero is the optimizer "
                "working, not a broken model.")
 c2.metric("After the loop", f"{op['final']:.1%}",
           delta=f"{op['final'] - op['baseline']:+.1%}",
           help="Recall on the same fixed benchmark, at a 0.1% false-positive budget.")
 c3.metric("PR AUC", f"{summary['final_pr_auc']:.3f}",
-          help="Average precision — the honest summary under 3.5% fraud prevalence. "
+          help="Average precision. The honest summary under 3.5% fraud prevalence. "
                f"ROC AUC reads {summary['naive_threshold_0.5']['final_roc_auc']:.4f} on the "
                "same run and says almost nothing.")
-c4.metric("Alert rate", f"{summary['final_alert_rate']:.2%}",
-          help="Share of ALL traffic flagged at that operating point — the number that "
-               "decides whether the queue behind it is staffable.")
+c4.metric("Alert rate", f"{summary['final_alert_rate_on_real_traffic']:.2%}",
+          help="Share of REAL traffic flagged at that operating point. The number that "
+               "decides whether the queue behind it is staffable. Scored against the "
+               f"mixture (real traffic plus this run's attacks) it reads "
+               f"{summary['final_alert_rate']:.2%}, which moves with a config knob and is "
+               "not the ops-facing figure.")
 
 left, center, right = st.columns([1, 1.1, 1.3])
 
@@ -102,7 +105,7 @@ with center:
         text=[f"{r:.0%}" for r in latest["recall"]], textposition="auto",
     ))
     fig.update_layout(
-        title=f"Recall by vector — iteration {final_iter}",
+        title=f"Recall by vector, iteration {final_iter}",
         xaxis_title="caught", xaxis_range=[0, 1], height=340, margin=dict(l=10, r=10),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -110,14 +113,14 @@ with center:
                "is 0.00% before the loop runs; what you are seeing is how quickly the "
                "detector learns each generator's fingerprint once retrained on it.")
 
-# ---- RIGHT: Blue Team — the money chart ------------------------------------
+# ---- RIGHT: Blue Team. The money chart ------------------------------------
 with right:
-    st.subheader("Blue Team — the arms race")
+    st.subheader("Blue Team. The arms race")
     bench = curve[curve["phase"] == "benchmark"]
     pressure = curve[curve["phase"] == "pressure"]
     fig = go.Figure()
     # Recall at a fixed false-positive budget, not F1 at a 0.5 cutoff. No payments system
-    # is tuned the way F1 assumes, and the write-up tells judges to distrust that number —
+    # is tuned the way F1 assumes, and the write-up tells judges to distrust that number,
     # the demo has to show the same metric the claims are made in.
     METRIC = "recall_at_fpr_0.001"
     fig.add_trace(go.Scatter(
@@ -140,8 +143,8 @@ with right:
         yaxis_range=[0, 1.02], height=340, legend=dict(y=-0.35), margin=dict(l=10, r=10),
     )
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("A static detector catches almost none of the adaptive attacks (iteration 0 "
-               "— they're tuned to look normal). One loop pass and blue holds the fixed "
+    st.caption("A static detector catches almost none of the adaptive attacks (iteration 0; "
+               "they're tuned to look normal). One loop pass and blue holds the fixed "
                "benchmark near the top. The dotted line is red's ongoing pressure: each "
                "iteration it finds a fresh evasion the just-retrained model partly misses. "
                "That gap is the honest, unfinished arms race. The grey dashed line is the "
@@ -158,20 +161,20 @@ with st.expander("Why this curve is defensible (the judge's question)"):
         "into `train` (detector may learn them) and held-out (the dotted pressure line).\n"
         "- **No leakage:** the base train/test split is frozen before any attack is "
         "injected; the benchmark and pressure attacks touch neither.\n"
-        "- **The gap between the two lines is the point** — blue holds the known shape, "
+        "- **The gap between the two lines is the point**, blue holds the known shape, "
         "red keeps probing new ones. An arms race, not a solved problem."
     )
 
 # ---- Fidelity: a metric, not a claim (judged criterion) --------------------
 st.markdown("---")
-st.subheader("Fidelity of simulation — measured, not claimed")
+st.subheader("Fidelity of simulation. Measured, not claimed")
 fid = summary.get("fidelity", {})
 if fid:
     f1, f2, f3 = st.columns(3)
     f1.metric("On-manifold rate", f"{fid['on_manifold_rate']:.1%}",
               help="Share of ATTACKER-CONTROLLED feature values still inside the realistic "
                    "manifold bounds. Every candidate is hard-clipped to these exact bounds, so "
-                   "this is ~100% by construction — it proves the clip is wired correctly, not "
+                   "this is ~100% by construction. It proves the clip is wired correctly, not "
                    "that the guardrail did meaningful work. See 'guardrail binding rate' for "
                    "that. The rest of an attack row is inherited from a real account or derived "
                    "from a real timeline, so it needs no plausibility check.")
@@ -190,7 +193,7 @@ fcol1, fcol2 = st.columns([1.3, 1])
 with fcol1:
     img = RESULTS / "fidelity.png"
     if img.exists():
-        st.image(str(img), caption="Legit traffic (blue) vs the mimicry vector (red) — "
+        st.image(str(img), caption="Legit traffic (blue) vs the mimicry vector (red): "
                                     "overlapping mass = the attack hides inside normal behaviour.")
 with fcol2:
     if not fidelity.empty:

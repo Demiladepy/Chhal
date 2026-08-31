@@ -1,6 +1,11 @@
 <title>Chhal</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Chhal — a closed-loop adversarial engine for GenAI payment fraud. Every attack it invents becomes the training ground for a defense that learns to see through it.">
+<link rel="icon" type="image/png" href="assets/logo_icon.png">
+<meta property="og:title" content="Chhal">
+<meta property="og:description" content="A closed-loop adversarial engine for GenAI payment fraud.">
+<meta property="og:image" content="assets/card.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="description" content="Chhal: a closed-loop adversarial engine for GenAI payment fraud. Every attack it invents becomes the training ground for a defense that learns to see through it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -174,7 +179,7 @@
 
 <div class="announce"><div class="wrap">
   <span><span class="dot"></span>&nbsp; Open source · runs on real IEEE-CIS data</span>
-  <span>Mastercard Innovation Challenge @ GFF 2026 — AI Defense Lab</span>
+  <span>Mastercard Innovation Challenge @ GFF 2026 · AI Defense Lab</span>
   <a href="https://github.com/Demiladepy/Chhal" target="_blank" rel="noopener">View the code ↗</a>
 </div></div>
 
@@ -196,7 +201,7 @@
       <h1 class="hero-title">The fraud loop that fights back.</h1>
       <p class="lead">A closed adversarial engine for GenAI payment fraud. A red-team agent
         invents attacks; a constrained optimizer sharpens them until they slip past the model;
-        the defense retrains on what got through — and the arms race is the demo.</p>
+        the defense retrains on what got through. The arms race is the demo.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#watch">Watch the loop close →</a>
         <a class="btn" href="https://github.com/Demiladepy/Chhal" target="_blank" rel="noopener">View on GitHub ↗</a>
@@ -234,14 +239,14 @@
 <section class="band" style="padding-top:58px">
   <div class="wrap">
     <div class="stats reveal">
-      <div class="stat"><div class="num" data-to="80.80" data-suffix="%" data-dec="2">0</div>
+      <div class="stat"><div class="num" data-to="79.60" data-suffix="%" data-dec="2">0</div>
         <div class="lbl">Fraud caught at a 0.1% false-positive budget<br>(from 0% on a static model)</div></div>
       <div class="stat"><div class="num" data-to="0.95" data-dec="2">0</div>
         <div class="lbl">PR AUC (average precision)<br>up from 0.031 at baseline</div></div>
       <div class="stat"><div class="num" data-to="100" data-suffix="%" data-dec="0">0</div>
-        <div class="lbl">On-manifold rate — attacks stay<br>executable after evasion</div></div>
-      <div class="stat"><div class="num" data-to="0.77" data-suffix="%" data-dec="2">0</div>
-        <div class="lbl">Alert rate — share of all<br>traffic flagged at the operating point</div></div>
+        <div class="lbl">On-manifold rate. Attacks stay<br>executable after evasion</div></div>
+      <div class="stat"><div class="num" data-to="0.72" data-suffix="%" data-dec="2">0</div>
+        <div class="lbl">Alert rate. Share of real<br>traffic flagged at the operating point</div></div>
     </div>
     <p class="eyebrow" style="margin-top:22px">// real IEEE-CIS card transactions · 3.5% fraud · temporal split · reproduce with <span class="accent">python scripts/run_loop.py</span> //</p>
   </div>
@@ -253,11 +258,11 @@
       <div class="reveal">
         <span class="eyebrow">// see it close //</span>
         <h2>One pass of the loop, on real payments.</h2>
-        <p class="sub">A static fraud model catches almost none of these adaptive attacks — they’re
-          tuned to look normal. Watch detection climb as the defense retrains on what slipped
-          through, at every false-positive budget a payments team would actually run.</p>
+        <p class="sub">A static fraud model catches almost none of these adaptive attacks. They are
+          tuned to look normal, and they succeed. Watch detection climb as the defense retrains on
+          what slipped through, at every false-positive budget a payments team would actually run.</p>
         <div class="big-metric">
-          <div><div class="v accent">0 → 81%</div><div class="k">recall @ 0.1% FPR</div></div>
+          <div><div class="v accent">0 → 80%</div><div class="k">recall @ 0.1% FPR</div></div>
           <div><div class="v accent">0 → 91%</div><div class="k">recall @ 0.5% FPR</div></div>
         </div>
       </div>
@@ -280,20 +285,20 @@
       <h2>Most teams submit three things. We submit the loop between them.</h2>
       <p class="sub">The brief says it twice: <em>the best solutions turn their own simulated
         attacks into the training ground for a stronger defense.</em> So Chhal isn’t an attack
-        deck, a generator and a classifier sitting apart — it’s one loop, structured on the
-        challenge’s own three phases, where each half makes the other stronger.</p>
+        deck, a generator and a classifier sitting apart. It is one loop, structured on the
+        challenge’s own three phases, where each half sharpens the other.</p>
     </div>
     <div class="steps">
-      <div class="step reveal"><div class="idx">01 — IDENTIFY</div><h3>Invent</h3>
-        <p>A taxonomy of where GenAI changes payment fraud. Six vectors are built as live code —
+      <div class="step reveal"><div class="idx">01 · IDENTIFY</div><h3>Invent</h3>
+        <p>A taxonomy of where GenAI changes payment fraud. Six vectors are built as live code:
           threshold-hugging, synthetic bust-out, card-testing, a UPI scam, mule fan-out, and an
           autopay-mandate hijack.</p></div>
-      <div class="step reveal"><div class="idx">02 — GENERATE</div><h3>Simulate</h3>
+      <div class="step reveal"><div class="idx">02 · GENERATE</div><h3>Simulate</h3>
         <p>Attacks are mounted as timed campaigns on real accounts, then sharpened against the
           current model without leaving the executable manifold. Fidelity is measured, not asserted.</p></div>
-      <div class="step reveal"><div class="idx">03 — DEFEND</div><h3>Retrain</h3>
+      <div class="step reveal"><div class="idx">03 · DEFEND</div><h3>Retrain</h3>
         <p>LightGBM learns what it caught; a fixed benchmark it never trains on measures whether it
-          <em>generalizes</em>. Reported at a false-positive budget — then the loop turns again.</p></div>
+          <em>generalizes</em>. Reported at a false-positive budget. Then the loop turns again.</p></div>
     </div>
   </div>
 </section>
@@ -302,19 +307,21 @@
   <div class="wrap">
     <div class="section-head reveal">
       <span class="eyebrow">// six live-loop vectors //</span>
-      <h2>The stealthier the attack, the harder it is to catch.</h2>
-      <p class="sub">Detection at a 0.1% false-positive budget, per vector. The hero,
-        <span class="mono">threshold_hugging</span>, mimics the victim’s own spending — so it sits
-        lowest by design. That residual is what the loop keeps fighting, not a bug.</p>
+      <h2>Stealth is not what decides whether we catch it.</h2>
+      <p class="sub">Detection at a 0.1% false-positive budget, per vector. We expected the
+        quietest vector to be the hardest, and the measurement said no: against the static model
+        every vector here is caught 0.00% of the time, loud ones included. We withdrew the claim
+        rather than keep the neat story. What separates these is not stealth. It is that one
+        population is in the training distribution and the other was invented.</p>
     </div>
     <div class="tablecard reveal">
       <table>
         <thead><tr><th>Vector</th><th>What it is</th><th>Recall @ 0.1% FPR</th><th>Read</th></tr></thead>
         <tbody>
-          <tr><td class="vname">threshold_hugging</td><td>Per-victim mimicry — paced and sized from the compromised card’s own history</td>
+          <tr><td class="vname">threshold_hugging</td><td>Per-victim mimicry, paced and sized from the compromised card’s own history</td>
             <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:58%"></span></span>58.2%</div></td>
             <td><span class="tag hot">stealthiest</span></td></tr>
-          <tr><td class="vname">autopay_mandate</td><td>Recurring-mandate hijack — pays monthly and flat, tripping no velocity feature</td>
+          <tr><td class="vname">autopay_mandate</td><td>Recurring-mandate hijack that pays monthly and flat, tripping no velocity feature</td>
             <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:63%"></span></span>63.2%</div></td>
             <td><span class="tag">low-and-slow</span></td></tr>
           <tr><td class="vname">mule_fanout</td><td>Funds split and forwarded across a ring of mule accounts</td>
@@ -340,20 +347,20 @@
     <div class="section-head reveal">
       <span class="eyebrow">// a static model is a fixed target //</span>
       <h2>Trained once on yesterday’s fraud, a classifier is a puzzle an LLM solves offline.</h2>
-      <p class="sub">Chhal makes the target move — and reports the hard parts too.</p>
+      <p class="sub">Chhal makes the target move, and reports the parts that still hurt.</p>
     </div>
     <div class="vs">
       <div class="col bad reveal"><h4>Static detector</h4><ul>
-        <li><span class="mk">✕</span> Catches almost none of the adaptive attacks — they’re tuned to look normal.</li>
+        <li><span class="mk">✕</span> Catches almost none of the adaptive attacks. They are tuned to look normal.</li>
         <li><span class="mk">✕</span> Every gap it leaves is stable, so an attacker finds it once and reuses it.</li>
         <li><span class="mk">✕</span> “Realistic” attacks are asserted, never measured against real traffic.</li>
-        <li><span class="mk">✕</span> Gains on training data can be memorisation — no proof it generalizes.</li>
+        <li><span class="mk">✕</span> Gains on training data can be memorisation, with no proof it generalizes.</li>
       </ul></div>
       <div class="col good reveal"><h4>Chhal · closed loop</h4><ul>
-        <li><span class="mk">✓</span> Recall climbs from 0% to <b>80.8%</b> at a 0.1% FP budget, on attacks never trained on — and the run verifies it honoured that budget (0.0998% realised).</li>
-        <li><span class="mk">✓</span> Each gap the red team finds becomes the next training signal — the target moves.</li>
+        <li><span class="mk">✓</span> Recall climbs from 0% to <b>79.6%</b> at a 0.1% FP budget, on attacks never trained on, and the run verifies it honoured that budget (0.0998% realised).</li>
+        <li><span class="mk">✓</span> Each gap the red team finds becomes the next training signal, so the target moves.</li>
         <li><span class="mk">✓</span> Fidelity is a number: on-manifold 100%, mimicry KS <b>0.175</b> versus real traffic.</li>
-        <li><span class="mk">✓</span> On a family held out <em>entirely</em>: <b>43.1%</b> — reported, not hidden. Honest generalisation.</li>
+        <li><span class="mk">✓</span> On a family held out <em>entirely</em>: <b>40.3%</b>, reported and not hidden. That is the number we lead with.</li>
       </ul></div>
     </div>
   </div>
@@ -363,7 +370,7 @@
   <div class="wrap">
     <div class="section-head reveal">
       <span class="eyebrow">// measured where a payments team runs it //</span>
-      <h2>Recall at a false-positive budget — not at a lucky threshold.</h2>
+      <h2>Recall at a false-positive budget, not at a lucky threshold.</h2>
       <p class="sub">At 3.5% fraud, ROC AUC is flattered by an enormous true-negative pile. The
         honest headline is recall at a fixed FPR and PR AUC (average precision).</p>
     </div>
@@ -372,21 +379,21 @@
         <thead><tr><th>Operating point</th><th>Static baseline</th><th>After the loop</th><th>Read</th></tr></thead>
         <tbody>
           <tr><td class="vname">recall @ 0.1% FPR</td><td>0.0%</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:81%"></span></span>80.80%</div></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:80%"></span></span>79.60%</div></td>
             <td><span class="tag hot">headline</span></td></tr>
           <tr><td class="vname">recall @ 0.5% FPR</td><td>0.13%</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:91%"></span></span>91.07%</div></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:91%"></span></span>91.27%</div></td>
             <td><span class="tag">tighter budget</span></td></tr>
           <tr><td class="vname">recall @ 1.0% FPR</td><td>0.13%</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:93%"></span></span>93.10%</div></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:93%"></span></span>93.40%</div></td>
             <td><span class="tag">looser budget</span></td></tr>
           <tr><td class="vname">PR AUC (avg precision)</td><td>0.031</td>
-            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:95%"></span></span>0.9508</div></td>
+            <td><div style="display:flex;gap:10px;align-items:center"><span class="bar2"><span style="width:95%"></span></span>0.9503</div></td>
             <td><span class="tag">honest summary</span></td></tr>
         </tbody>
       </table>
     </div>
-    <p class="eyebrow" style="margin-top:18px">// baseline catching ~0 is the optimizer doing its job — the benchmark attacks were built to evade it. On-manifold 100% · guardrail-binding 33.4% · mimicry KS 0.175 vs real traffic //</p>
+    <p class="eyebrow" style="margin-top:18px">// baseline catching ~0 is NOT evasion. Every vector scores 0.00% before the optimizer runs too, the cause is our own host-selection rule, and the README says so. On-manifold 100% · guardrail-binding 35.5% · mimicry KS 0.175 vs real traffic //</p>
   </div>
 </section>
 
@@ -411,10 +418,10 @@
         </svg>
       </div>
       <div class="reveal"><div class="legend">
-        <div class="row"><span class="sw blue"></span><div><b class="accent">Benchmark — the money line.</b>
+        <div class="row"><span class="sw blue"></span><div><b class="accent">Benchmark: the money line.</b>
           <p>A fixed set of hard adaptive attacks, built once and never trained on. A static model
-            catches almost none of it. The loop pulls it up and holds — generalisation, not memory.</p></div></div>
-        <div class="row"><span class="sw amber"></span><div><b>Pressure — the honest gap.</b>
+            catches almost none of it. The loop pulls it up and holds it there. Generalisation, not memory.</p></div></div>
+        <div class="row"><span class="sw amber"></span><div><b>Pressure: the honest gap.</b>
           <p>Each iteration the red team optimises a fresh batch against the current model and holds
             it out. It stays volatile: the attacker keeps finding evasions. The gap is the arms race, unfinished.</p></div></div>
       </div></div>
@@ -425,10 +432,10 @@
 <section class="band">
   <div class="wrap reveal">
     <div class="callout">
-      <p class="q">“Isn’t this circular — you attack your own model, retrain, and <span class="accent">of course</span> it improves?”</p>
+      <p class="q">“Isn’t this circular? You attack your own model, retrain, and <span class="accent">of course</span> it improves?”</p>
       <div class="points">
         <div><b>// fixed benchmark</b>Hard attacks built once against the baseline and never trained on. Improving on them is generalisation to unseen fraud.</div>
-        <div><b>// held-out family</b>Leave a whole attack family out of training and the model catches <b>43.1%</b> of it — versus 66.1% on trained families. We report the gap, not hide it.</div>
+        <div><b>// held-out family</b>Leave a whole attack family out of training and the model catches <b>40.3%</b> of it, versus 53.2% on trained families. We report the gap instead of hiding it.</div>
         <div><b>// no leakage</b>The base split is temporal and frozen before any attack is injected. Benchmark and pressure attacks touch neither.</div>
         <div><b>// the gap is the point</b>Blue holds the known shape; red keeps probing new ones. We show an arms race, not a solved problem.</div>
       </div>
